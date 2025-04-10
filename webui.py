@@ -761,6 +761,341 @@ async def run_deep_search(research_task, max_search_iteration_input, max_query_p
     return markdown_content, file_path, gr.update(value="Stop", interactive=True), gr.update(interactive=True)
 
 
+async def run_website_test(test_type, target_url, test_config, llm_provider, llm_model_name, 
+                        llm_num_ctx, llm_temperature, llm_base_url, llm_api_key, 
+                        use_vision, use_own_browser, headless, disable_security, window_w, window_h, chrome_cdp, keep_browser_open, max_steps=25):
+    """Run a website test with specified parameters using CustomAgent for consistency"""
+    
+    try:
+        # To avoid import errors
+        import os
+        from datetime import datetime
+        
+        global _global_browser, _global_browser_context, _global_agent
+        
+        # Initialize LLM
+        logger.info(f"Initializing LLM for website testing: {llm_provider}/{llm_model_name}")
+        llm = utils.get_llm_model(
+            provider=llm_provider,
+            model_name=llm_model_name,
+            num_ctx=llm_num_ctx,
+            temperature=llm_temperature,
+            base_url=llm_base_url,
+            api_key=llm_api_key,
+        )
+        
+        # Ensure test_config is a dictionary
+        if test_config is None:
+            test_config = {}
+            
+        if not target_url:
+            raise ValueError("Please provide a valid URL to test")
+            
+        # Add http:// if missing from URL
+        if not target_url.startswith("http"):
+            target_url = "https://" + target_url
+        
+        logger.info(f"Starting website test: {test_type} for {target_url}")
+        
+        # Get scope from config
+        scope = test_config.get("scope", "limited navigation")
+        scope_instructions = ""
+        
+        if scope == "homepage only":
+            scope_instructions = "Focus only on the homepage. Do not navigate to other pages."
+        elif scope == "limited navigation":
+            scope_instructions = "Test the homepage thoroughly and check a few important links, but don't go deeper than 2 levels."
+        elif scope == "thorough exploration":
+            scope_instructions = "Explore the website thoroughly, following important links and examining key sections in detail."
+        
+        # Create task description based on test type
+        if test_type == "functionality":
+            task = f"""Test the website {target_url} for functionality issues.
+{scope_instructions}
+
+Follow this testing methodology for efficiency:
+1. First, analyze the page layout and structure to identify key areas to test
+2. Prioritize testing essential functionality based on the website's purpose
+3. Document specific issues rather than general observations
+4. Take screenshots of problems you encounter
+
+Tasks:
+{" - Analyze links: Click on main navigation links and check if they work correctly" if test_config.get("check_links", False) else ""}
+{" - Check forms: Find and analyze forms, test with sample inputs if possible" if test_config.get("check_forms", False) else ""}
+{" - Evaluate navigation: Explore the site navigation and assess its logical structure" if test_config.get("check_navigation", False) else ""}
+
+Provide a detailed analysis with specific findings and take screenshots of any issues.
+Your final answer should be formatted in Markdown with a summary section and a detailed findings section.
+"""
+            
+        elif test_type == "accessibility":
+            wcag_level = test_config.get("wcag_level", "AA")
+            task = f"""Test the website {target_url} for WCAG {wcag_level} accessibility compliance.
+{scope_instructions}
+
+Follow this testing methodology for efficiency:
+1. First scan for critical accessibility issues (missing alt text, keyboard navigation issues)
+2. Check color contrast on important elements like buttons, links and text
+3. Test keyboard navigation for key interactive elements
+4. Document specific examples of issues rather than general statements
+
+Tasks:
+{" - Analyze color contrast: Identify elements with poor contrast ratios" if test_config.get("check_contrast", False) else ""}
+{" - Check alt text: Find images and verify they have appropriate alt text" if test_config.get("check_alt_text", False) else ""}
+{" - Evaluate ARIA attributes: Check ARIA usage and accessibility structure" if test_config.get("check_aria", False) else ""}
+
+Provide a detailed accessibility audit according to WCAG {wcag_level} standards.
+Your final answer should be formatted in Markdown with a summary section and a detailed findings section.
+"""
+            
+        elif test_type == "performance":
+            device_types = test_config.get("device_types", ["Desktop"])
+            device_instructions = ""
+            if "Mobile" in device_types:
+                device_instructions += " View the site on a mobile device by resizing the browser window to a small size (e.g. 375x667)."
+            if "Tablet" in device_types:
+                device_instructions += " View the site on a tablet by resizing the browser window to a medium size (e.g. 768x1024)."
+                
+            task = f"""Test the website {target_url} for performance optimization opportunities.{device_instructions}
+{scope_instructions}
+
+Follow this testing methodology for efficiency:
+1. First identify large media elements (images, videos) that might slow loading
+2. Check for render-blocking resources like scripts and stylesheets
+3. Test responsive behavior by resizing the browser window
+4. Focus on specific examples of issues, not general observations
+
+Tasks:
+{" - Analyze page structure: Identify elements that might slow down loading" if test_config.get("check_loading", False) else ""}
+{" - Check resources: Look for resource-heavy elements like large images, videos, scripts" if test_config.get("check_resources", False) else ""}
+{" - Evaluate responsiveness: Test how the site behaves on different screen sizes" if test_config.get("check_responsiveness", False) else ""}
+
+Provide a detailed performance analysis with specific findings and improvement recommendations.
+Your final answer should be formatted in Markdown with a summary section and a detailed findings section.
+"""
+        else:
+            task = f"""Analyze the website {target_url} and provide insights about its design, functionality, and user experience.
+{scope_instructions}
+
+Follow this testing methodology for efficiency:
+1. First get an overview of the site's purpose and main features
+2. Identify key user flows and test them
+3. Document specific observations with examples
+4. Take screenshots to illustrate your findings
+
+Your final answer should be formatted in Markdown with a summary section and a detailed findings section.
+"""
+
+        # Set up paths for recording files
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_recording_path = os.path.join("tmp", "record_videos")
+        save_agent_history_path = os.path.join("tmp", "agent_history")
+        save_trace_path = os.path.join("tmp", "traces")
+        
+        # Ensure directories exist
+        for path in [save_recording_path, save_agent_history_path, save_trace_path]:
+            os.makedirs(path, exist_ok=True)
+            
+        # Configuration for browser
+        extra_chromium_args = [f"--window-size={window_w},{window_h}"]
+        cdp_url = chrome_cdp
+        
+        if use_own_browser:
+            cdp_url = os.getenv("CHROME_CDP", chrome_cdp)
+            chrome_path = os.getenv("CHROME_PATH", None)
+            if chrome_path == "":
+                chrome_path = None
+            chrome_user_data = os.getenv("CHROME_USER_DATA", None)
+            if chrome_user_data:
+                extra_chromium_args += [f"--user-data-dir={chrome_user_data}"]
+        else:
+            chrome_path = None
+            
+        controller = CustomController()
+        
+        # Initialize global browser if needed
+        if (_global_browser is None) or (cdp_url and cdp_url != "" and cdp_url != None):
+            _global_browser = CustomBrowser(
+                config=BrowserConfig(
+                    headless=headless,
+                    disable_security=disable_security,
+                    cdp_url=cdp_url,
+                    chrome_instance_path=chrome_path,
+                    extra_chromium_args=extra_chromium_args,
+                )
+            )
+            
+        if _global_browser_context is None or (chrome_cdp and cdp_url != "" and cdp_url != None):
+            _global_browser_context = await _global_browser.new_context(
+                config=BrowserContextConfig(
+                    no_viewport=False,
+                    trace_path=save_trace_path if save_trace_path else None,
+                    save_recording_path=save_recording_path if save_recording_path else None,
+                    browser_window_size=BrowserContextWindowSize(
+                        width=window_w, height=window_h
+                    ),
+                )
+            )
+            
+        # Create a custom agent specifically for testing
+        additional_info = f"Test Type: {test_type}. " + \
+                        f"Test Scope: {scope}. " + \
+                        f"{'Check links, ' if test_config.get('check_links', False) else ''}" + \
+                        f"{'Check forms, ' if test_config.get('check_forms', False) else ''}" + \
+                        f"{'Check navigation, ' if test_config.get('check_navigation', False) else ''}" + \
+                        f"{'Check contrast, ' if test_config.get('check_contrast', False) else ''}" + \
+                        f"{'Check alt text, ' if test_config.get('check_alt_text', False) else ''}" + \
+                        f"{'Check ARIA, ' if test_config.get('check_aria', False) else ''}" + \
+                        f"{'Check loading, ' if test_config.get('check_loading', False) else ''}" + \
+                        f"{'Check resources, ' if test_config.get('check_resources', False) else ''}" + \
+                        f"{'Check responsiveness' if test_config.get('check_responsiveness', False) else ''}"
+        
+        logger.info(f"Creating CustomAgent for testing with task: {task}")
+        _global_agent = CustomAgent(
+            task=task,
+            add_infos=additional_info,
+            use_vision=use_vision,
+            llm=llm,
+            browser=_global_browser,
+            browser_context=_global_browser_context,
+            controller=controller,
+            system_prompt_class=CustomSystemPrompt,
+            agent_prompt_class=CustomAgentMessagePrompt,
+            max_actions_per_step=15,  # Increased from 10 for more efficiency per step
+            tool_calling_method="auto",
+            generate_gif=True
+        )
+        
+        # Run the agent with the specified number of steps
+        logger.info(f"Running CustomAgent for website testing with max_steps={max_steps}")
+        history = await _global_agent.run(max_steps=max_steps)
+        
+        # Save agent history
+        history_file = os.path.join(save_agent_history_path, f"{test_type}_test_{timestamp}.json")
+        _global_agent.save_history(history_file)
+        
+        # Extract results
+        final_result = history.final_result()
+        errors = history.errors()
+        model_actions = history.model_actions()
+        model_thoughts = history.model_thoughts()
+        
+        # Ensure results are always strings for Markdown components
+        if not isinstance(final_result, str):
+            final_result = str(final_result) if final_result is not None else "No results available."
+            
+        if not isinstance(errors, str):
+            errors = str(errors) if errors is not None else "No errors occurred."
+        
+        # Generate a report file
+        report_dir = os.path.join("tmp", "test_reports")
+        os.makedirs(report_dir, exist_ok=True)
+        
+        report_path = os.path.join(report_dir, f"{test_type}_test_{timestamp}.md")
+        with open(report_path, "w") as f:
+            f.write(f"# {test_type.title()} Test Results for {target_url}\n\n")
+            f.write(f"Test performed on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            f.write(final_result)
+        
+        logger.info(f"Website test complete, report saved to {report_path}")
+        
+        # Get the result GIF
+        gif_path = os.path.join(os.path.dirname(__file__), "agent_history.gif")
+        
+        # Get the latest trace file
+        trace_files = get_latest_files(save_trace_path)
+        trace_file = trace_files.get('.zip')
+        
+        # Handle cleanup based on persistence configuration
+        if not keep_browser_open:
+            if _global_browser_context:
+                await _global_browser_context.close()
+                _global_browser_context = None
+
+            if _global_browser:
+                await _global_browser.close()
+                _global_browser = None
+                
+        _global_agent = None
+        return final_result, errors, model_actions, model_thoughts, gif_path, trace_file, history_file, gr.update(interactive=True)
+        
+    except Exception as e:
+        import traceback
+        error_msg = f"Test error: {str(e)}\n{traceback.format_exc()}"
+        logger.error(f"Website test failed: {error_msg}")
+        
+        # Clean up in case of error
+        _global_agent = None
+        if not keep_browser_open:
+            if _global_browser_context:
+                await _global_browser_context.close()
+                _global_browser_context = None
+
+            if _global_browser:
+                await _global_browser.close()
+                _global_browser = None
+                
+        return f"Error: {str(e)}", error_msg, "", "", None, None, None, gr.update(interactive=True)
+
+
+# Helper function to run all steps of website testing
+async def handle_website_test(test_type, test_url, 
+                            func_check_links, func_check_forms, func_check_navigation, func_depth,
+                            access_wcag_level, access_check_contrast, access_check_alt_text, access_check_aria,
+                            perf_check_loading, perf_check_resources, perf_check_responsiveness, perf_device_types,
+                            llm_provider, llm_model_name, llm_num_ctx, llm_temperature, 
+                            llm_base_url, llm_api_key, use_vision, use_own_browser, 
+                            headless, chrome_cdp, test_max_steps, test_scope):
+    """Handle the complete website testing process including collecting config and running tests"""
+    
+    # First collect the test configuration based on test type
+    if test_type == "functionality":
+        test_config = {
+            "check_links": func_check_links,
+            "check_forms": func_check_forms,
+            "check_navigation": func_check_navigation,
+            "depth": func_depth,
+            "scope": test_scope
+        }
+    elif test_type == "accessibility":
+        test_config = {
+            "wcag_level": access_wcag_level,
+            "check_contrast": access_check_contrast,
+            "check_alt_text": access_check_alt_text,
+            "check_aria": access_check_aria,
+            "scope": test_scope
+        }
+    elif test_type == "performance":
+        test_config = {
+            "check_loading": perf_check_loading,
+            "check_resources": perf_check_resources,
+            "check_responsiveness": perf_check_responsiveness,
+            "device_types": perf_device_types,
+            "scope": test_scope
+        }
+    else:
+        test_config = {"scope": test_scope}
+    
+    # Use default values for the additional parameters
+    disable_security = True
+    window_w = 1280
+    window_h = 1100
+    keep_browser_open = False
+    
+    # Then run the website test with the collected config
+    results = await run_website_test(test_type, test_url, test_config, 
+                                llm_provider, llm_model_name, llm_num_ctx, llm_temperature,
+                                llm_base_url, llm_api_key, use_vision, use_own_browser,
+                                headless, disable_security, window_w, window_h, 
+                                chrome_cdp, keep_browser_open, test_max_steps)
+    
+    # Unpack results to match output structure expected by UI
+    summary, errors, model_actions, model_thoughts, gif_path, trace_file, history_file, button_update = results
+    
+    # Return values to match the UI outputs
+    return summary, errors, history_file, gif_path, trace_file, history_file, button_update
+
+
 def create_ui(theme_name="Ocean"):
     css = """
     :root {
@@ -1191,52 +1526,146 @@ def create_ui(theme_name="Ocean"):
                     markdown_output_display = gr.Markdown(label="Research Report")
                     markdown_download = gr.File(label="Download Research Report")
 
-            # Bind the stop button click event after errors_output is defined
-            stop_button.click(
-                fn=stop_agent,
-                inputs=[],
-                outputs=[stop_button, run_button],
-            )
-
-            # Run button click handler
-            run_button.click(
-                fn=run_with_stream,
-                inputs=[
-                    agent_type, llm_provider, llm_model_name, ollama_num_ctx, llm_temperature, llm_base_url,
-                    llm_api_key,
-                    use_own_browser, keep_browser_open, headless, disable_security, window_w, window_h,
-                    save_recording_path, save_agent_history_path, save_trace_path,
-                    enable_recording, task, add_infos, max_steps, use_vision, max_actions_per_step,
-                    tool_calling_method, chrome_cdp, max_input_tokens
-                ],
-                outputs=[
-                    browser_view,
-                    final_result_output,
-                    errors_output,
-                    model_actions_output,
-                    model_thoughts_output,
-                    recording_gif,
-                    trace_file,
-                    agent_history_file,
-                    stop_button,
-                    run_button
-                ],
-            )
-
-            # Run Deep Research
-            research_button.click(
-                fn=run_deep_search,
-                inputs=[research_task_input, max_search_iteration_input, max_query_per_iter_input, llm_provider,
-                        llm_model_name, ollama_num_ctx, llm_temperature, llm_base_url, llm_api_key, use_vision,
-                        use_own_browser, headless, chrome_cdp],
-                outputs=[markdown_output_display, markdown_download, stop_research_button, research_button]
-            )
-            # Bind the stop button click event after errors_output is defined
-            stop_research_button.click(
-                fn=stop_research_agent,
-                inputs=[],
-                outputs=[stop_research_button, research_button],
-            )
+            with gr.TabItem("🔬 Website Testing", id=6, elem_classes="card"):
+                with gr.Group():
+                    test_url = gr.Textbox(
+                        label="Website URL",
+                        placeholder="https://example.com",
+                        value="",
+                        info="URL of the website to test",
+                        interactive=True
+                    )
+                    
+                    test_type = gr.Radio(
+                        ["functionality", "accessibility", "performance"],
+                        label="Test Type",
+                        value="functionality",
+                        info="Select what aspect of the website to test",
+                        interactive=True
+                    )
+                    
+                    # Test execution settings
+                    with gr.Row():
+                        with gr.Column():
+                            test_max_steps = gr.Slider(
+                                minimum=10,
+                                maximum=50,
+                                value=25,
+                                step=5,
+                                label="Maximum Test Steps",
+                                info="More steps allow for deeper testing but take longer",
+                                interactive=True
+                            )
+                        with gr.Column():
+                            test_scope = gr.Radio(
+                                ["homepage only", "limited navigation", "thorough exploration"],
+                                label="Test Scope",
+                                value="limited navigation",
+                                info="Controls how deeply the agent explores the website",
+                                interactive=True
+                            )
+                    
+                    # Dynamic configuration based on test type
+                    with gr.Row(visible=True) as functionality_config:
+                        with gr.Column():
+                            func_check_links = gr.Checkbox(label="Check Links", value=True, 
+                                info="Test if links on the page are valid")
+                            func_check_forms = gr.Checkbox(label="Check Forms", value=True,
+                                info="Test form submissions")
+                        with gr.Column():
+                            func_check_navigation = gr.Checkbox(label="Check Navigation", value=True,
+                                info="Test navigation flows")
+                            func_depth = gr.Slider(label="Test Depth", minimum=1, maximum=3, value=1, step=1,
+                                info="How many levels of pages to test")
+                    
+                    with gr.Row(visible=False) as accessibility_config:
+                        with gr.Column():
+                            access_wcag_level = gr.Dropdown(
+                                ["A", "AA", "AAA"],
+                                label="WCAG Compliance Level",
+                                value="AA",
+                                info="Web Content Accessibility Guidelines level to test against"
+                            )
+                            access_check_contrast = gr.Checkbox(label="Check Color Contrast", value=True,
+                                info="Test color contrast ratios")
+                        with gr.Column():
+                            access_check_alt_text = gr.Checkbox(label="Check Alt Text", value=True,
+                                info="Test for image alt text")
+                            access_check_aria = gr.Checkbox(label="Check ARIA", value=True,
+                                info="Test ARIA attributes")
+                    
+                    with gr.Row(visible=False) as performance_config:
+                        with gr.Column():
+                            perf_check_loading = gr.Checkbox(label="Page Load Time", value=True,
+                                info="Measure page load time")
+                            perf_check_resources = gr.Checkbox(label="Resource Usage", value=True,
+                                info="Analyze resource usage")
+                        with gr.Column():
+                            perf_check_responsiveness = gr.Checkbox(label="Responsiveness", value=True,
+                                info="Test responsiveness on different screen sizes")
+                            perf_device_types = gr.CheckboxGroup(
+                                ["Desktop", "Tablet", "Mobile"],
+                                label="Device Types",
+                                value=["Desktop"],
+                                info="Device types to test responsiveness on"
+                            )
+                    
+                    # Run test button
+                    with gr.Row(elem_classes="action-buttons"):
+                        run_test_button = gr.Button("▶️ Run Test", variant="primary")
+                        
+                    # Results displays
+                    with gr.Accordion("Test Results", open=True):
+                        test_summary = gr.Markdown(label="Summary")
+                        test_details = gr.Markdown(label="Details")
+                        
+                    with gr.Row():
+                        with gr.Column():
+                            test_recording_gif = gr.Image(label="Test Recording", format="gif")
+                        with gr.Column():
+                            with gr.Row():
+                                test_trace_file = gr.File(label="Trace File")
+                                test_agent_history = gr.File(label="Agent History")
+                        
+                    test_report = gr.File(label="Download Full Report")
+                    
+                    # Function to update visibility of config sections based on test type
+                    def update_test_config_visibility(test_type):
+                        return {
+                            functionality_config: test_type == "functionality",
+                            accessibility_config: test_type == "accessibility",
+                            performance_config: test_type == "performance"
+                        }
+                    
+                    # Connect the test type selection to update the config visibility
+                    test_type.change(
+                        fn=update_test_config_visibility,
+                        inputs=test_type,
+                        outputs=[functionality_config, accessibility_config, performance_config]
+                    )
+                    
+                    # Connect run test button
+                    run_test_button.click(
+                        fn=handle_website_test,
+                        inputs=[
+                            test_type, test_url,
+                            func_check_links, func_check_forms, func_check_navigation, func_depth,
+                            access_wcag_level, access_check_contrast, access_check_alt_text, access_check_aria,
+                            perf_check_loading, perf_check_resources, perf_check_responsiveness, perf_device_types,
+                            llm_provider, llm_model_name, ollama_num_ctx, llm_temperature, 
+                            llm_base_url, llm_api_key, use_vision, use_own_browser, 
+                            headless, chrome_cdp, test_max_steps, test_scope
+                        ],
+                        outputs=[
+                            test_summary, 
+                            test_details, 
+                            test_report,
+                            test_recording_gif, 
+                            test_trace_file, 
+                            test_agent_history, 
+                            run_test_button
+                        ]
+                    )
 
             with gr.TabItem("🎥 Recordings", id=7, elem_classes="card"):
                 def list_recordings(save_recording_path):
@@ -1327,6 +1756,54 @@ def create_ui(theme_name="Ocean"):
             fn=update_ui_from_config,
             inputs=[config_file_input],
             outputs=all_components + [config_status]
+        )
+
+        # Bind the stop button click event after errors_output is defined
+        stop_button.click(
+            fn=stop_agent,
+            inputs=[],
+            outputs=[stop_button, run_button],
+        )
+
+        # Run button click handler
+        run_button.click(
+            fn=run_with_stream,
+            inputs=[
+                agent_type, llm_provider, llm_model_name, ollama_num_ctx, llm_temperature, llm_base_url,
+                llm_api_key,
+                use_own_browser, keep_browser_open, headless, disable_security, window_w, window_h,
+                save_recording_path, save_agent_history_path, save_trace_path,
+                enable_recording, task, add_infos, max_steps, use_vision, max_actions_per_step,
+                tool_calling_method, chrome_cdp, max_input_tokens
+            ],
+            outputs=[
+                browser_view,
+                final_result_output,
+                errors_output,
+                model_actions_output,
+                model_thoughts_output,
+                recording_gif,
+                trace_file,
+                agent_history_file,
+                stop_button,
+                run_button
+            ],
+        )
+
+        # Run Deep Research
+        research_button.click(
+            fn=run_deep_search,
+            inputs=[research_task_input, max_search_iteration_input, max_query_per_iter_input, llm_provider,
+                    llm_model_name, ollama_num_ctx, llm_temperature, llm_base_url, llm_api_key, use_vision,
+                    use_own_browser, headless, chrome_cdp],
+            outputs=[markdown_output_display, markdown_download, stop_research_button, research_button]
+        )
+        
+        # Bind the stop button click event for research
+        stop_research_button.click(
+            fn=stop_research_agent,
+            inputs=[],
+            outputs=[stop_research_button, research_button],
         )
     return demo
 
