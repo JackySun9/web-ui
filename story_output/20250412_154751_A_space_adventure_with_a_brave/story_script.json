@@ -1,0 +1,90 @@
+{
+  "style_guide": {
+    "art_style": "anime",
+    "color_palette": "vibrant and cosmic",
+    "visual_theme": "futuristic space exploration with a whimsical touch"
+  },
+  "characters": [
+    {
+      "name": "Captain Elara Vega",
+      "description": "A tall, athletic woman with short, wavy black hair and piercing green eyes. She wears a sleek, silver space suit with blue glowing accents and a helmet that retracts into her suit. A small scar runs down her left cheek, a testament to her bravery.",
+      "role": "Brave Astronaut"
+    },
+    {
+      "name": "Robo",
+      "description": "A small, round robot with a shiny, chrome exterior and digital eyes that change color to express emotions. Equipped with various tools and appendages that extend from its body, Robo hovers effortlessly using anti-gravity technology. It emits a soft, blue light from its core.",
+      "role": "Robot Companion"
+    }
+  ],
+  "settings": [
+    {
+      "name": "Planet Xylon",
+      "description": "A vibrant, alien world with a kaleidoscope of colorful flora and fauna. The sky is a deep purple with swirling nebula clouds and two moons casting an ethereal glow. Strange, towering rock formations dot the landscape, and luminescent plants light up the night."
+    }
+  ],
+  "scenes": [
+    {
+      "scene_number": 1,
+      "description": "Captain Elara Vega and Robo stand on the bridge of their spaceship, looking out at the mysterious planet Xylon through a large viewport.",
+      "narration": "After months of travel, Captain Elara Vega and her trusty robot companion, Robo, finally arrive at the uncharted planet Xylon. The sight is breathtaking, with colors and shapes unlike anything they've seen before.",
+      "characters_present": [
+        "Captain Elara Vega",
+        "Robo"
+      ]
+    },
+    {
+      "scene_number": 2,
+      "description": "The spaceship lands on Xylon, and Elara steps out, her silver suit glistening under the twin moons. Robo hovers beside her, scanning the environment.",
+      "narration": "As they set foot on Xylon, Elara's heart races with excitement and curiosity. Robo's sensors pick up life signs, and they begin their exploration.",
+      "characters_present": [
+        "Captain Elara Vega",
+        "Robo"
+      ]
+    },
+    {
+      "scene_number": 3,
+      "description": "They traverse a vibrant forest filled with bioluminescent plants and creatures that shimmer in the dim light.",
+      "narration": "The forest is alive with color and sound. Elara and Robo move cautiously, marveling at the alien wildlife that surrounds them.",
+      "characters_present": [
+        "Captain Elara Vega",
+        "Robo"
+      ]
+    },
+    {
+      "scene_number": 4,
+      "description": "A sudden tremor shakes the ground, and a towering rock formation collapses, trapping Elara's leg.",
+      "narration": "Disaster strikes as a tremor shakes the ground. Elara finds herself pinned under debris, but Robo is quick to act, using its tools to free her.",
+      "characters_present": [
+        "Captain Elara Vega",
+        "Robo"
+      ]
+    },
+    {
+      "scene_number": 5,
+      "description": "With Elara freed, they continue their journey and discover a hidden cave that glows with a mysterious energy.",
+      "narration": "Grateful for Robo's help, Elara presses on. Their exploration leads them to a hidden cave, pulsating with a strange, inviting energy.",
+      "characters_present": [
+        "Captain Elara Vega",
+        "Robo"
+      ]
+    },
+    {
+      "scene_number": 6,
+      "description": "Inside the cave, they find a crystal that seems to be the source of the energy, pulsing with a heartbeat-like rhythm.",
+      "narration": "The heart of Xylon lies before them\u2014a crystal of immense power. They realize its potential to provide energy solutions for countless worlds.",
+      "characters_present": [
+        "Captain Elara Vega",
+        "Robo"
+      ]
+    },
+    {
+      "scene_number": 7,
+      "description": "Elara and Robo return to their spaceship, ready to share their discovery with the universe.",
+      "narration": "Their mission complete, Elara and Robo prepare to leave Xylon, eager to spread the hope and possibilities their discovery holds.",
+      "characters_present": [
+        "Captain Elara Vega",
+        "Robo"
+      ]
+    }
+  ]
+}

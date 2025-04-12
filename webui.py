@@ -1,5 +1,6 @@
 import pdb
 import logging
+import json
 
 from dotenv import load_dotenv
 
@@ -522,6 +523,61 @@ async def run_custom_agent(
             if _global_browser:
                 await _global_browser.close()
                 _global_browser = None
+
+
+async def run_story_agent(
+        llm,
+        task,
+        image_generation_model="dall-e-3",
+        image_generation_api_key=None,
+        save_story_path=None,
+        max_steps=10,
+):
+    try:
+        global _global_agent
+        
+        from src.agent.story_agent import StoryAgent
+        from src.agent.custom_prompts import CustomSystemPrompt, CustomAgentMessagePrompt
+        
+        # Create and run agent
+        _global_agent = StoryAgent(
+            task=task,
+            llm=llm,
+            system_prompt_class=CustomSystemPrompt,
+            agent_prompt_class=CustomAgentMessagePrompt,
+            image_generation_model=image_generation_model,
+            image_generation_api_key=image_generation_api_key,
+            save_story_path=save_story_path,
+        )
+        
+        # Run the agent
+        result = await _global_agent.run(max_steps=max_steps)
+        
+        # Check if generation was successful
+        if result.get("success", False):
+            gif_path = result.get("gif_path")
+            script_path = result.get("script_path")
+            
+            # Read the script content
+            script_content = ""
+            if script_path and os.path.exists(script_path):
+                try:
+                    with open(script_path, 'r') as f:
+                        script_content = f.read()
+                except Exception as e:
+                    logger.error(f"Error reading script file: {e}")
+            
+            return gif_path, '', script_content, '', None, script_path
+        else:
+            # Return the error message
+            return '', result.get("error", "Story generation failed"), '', '', None, None
+            
+    except Exception as e:
+        import traceback
+        error_details = str(e) + "\n" + traceback.format_exc()
+        return '', error_details, '', '', None, None
+    finally:
+        _global_agent = None
 
 
 async def run_with_stream(
@@ -1495,6 +1551,198 @@ def create_ui(theme_name="Ocean"):
                             with gr.Row():
                                 trace_file = gr.File(label="Trace File")
                                 agent_history_file = gr.File(label="Agent History")
+
+            with gr.Tab("💭 Story Agent"):
+                with gr.Row():
+                    with gr.Column():
+                        story_task = gr.Textbox(
+                            label="📝 Story Topic", 
+                            value="A space adventure with a brave astronaut and her robot companion exploring a new planet", 
+                            lines=3,
+                            placeholder="Describe the story you want to generate..."
+                        )
+                        story_llm_provider = gr.Dropdown(
+                            choices=[provider for provider, model in utils.model_names.items()],
+                            label="LLM Provider",
+                            value="openai",
+                            interactive=True,
+                            info="LLM provider for story generation"
+                        )
+                        story_llm_model_name = gr.Dropdown(
+                            label="LLM Model",
+                            value="gpt-4o",
+                            interactive=True,
+                            allow_custom_value=True,  # Allow users to input custom model names
+                            choices=utils.model_names.get("openai", []),
+                            info="Choose the LLM model for story generation"
+                        )
+                        story_image_model = gr.Dropdown(
+                            label="Image Generation Model",
+                            value="dall-e-3",
+                            interactive=True,
+                            choices=["dall-e-3", "dall-e-2", "midjourney"],
+                            info="Model to use for generating scene images"
+                        )
+                        story_save_path = gr.Textbox(
+                            label="Save Path",
+                            value="story_output",
+                            placeholder="Directory to save story files",
+                            info="Base directory for stories - each story gets its own timestamped folder"
+                        )
+                        
+                        story_run_button = gr.Button("🚀 Generate Story", variant="primary")
+                        story_stop_button = gr.Button("🛑 Stop Generation", variant="stop")
+                        
+                    with gr.Column():
+                        story_errors_output = gr.Textbox(
+                            label="Errors",
+                            value="",
+                            visible=False,
+                            lines=10
+                        )
+                        story_script_output = gr.Textbox(
+                            label="📚 Story Script",
+                            lines=10
+                        )
+                        
+                        story_image_output = gr.Image(
+                            label="🎬 Story Animation",
+                            type="filepath",
+                            height=600
+                        )
+                
+                # Section for previously generated stories
+                with gr.Accordion("📚 Previous Stories", open=False):
+                    story_refresh_button = gr.Button("🔄 Refresh", variant="secondary", scale=0.2)
+                    
+                    story_list = gr.Markdown("Click Refresh to see previously generated stories")
+                    
+                    def list_story_folders(base_path):
+                        """List the timestamped story folders with their creation dates"""
+                        if not os.path.exists(base_path):
+                            return "No stories found. Base directory doesn't exist."
+                        
+                        # Get all subdirectories in the base path
+                        story_dirs = [d for d in os.listdir(base_path) 
+                                     if os.path.isdir(os.path.join(base_path, d))]
+                        
+                        if not story_dirs:
+                            return "No stories found in the base directory."
+                        
+                        # Sort directories by creation time (newest first)
+                        story_dirs.sort(key=lambda d: os.path.getctime(os.path.join(base_path, d)), reverse=True)
+                        
+                        # Format the output as markdown
+                        result = "## Previous Stories\n\n"
+                        result += "| Date | Story | Files |\n"
+                        result += "|------|-------|-------|\n"
+                        
+                        for d in story_dirs:
+                            # Get creation time
+                            ctime = os.path.getctime(os.path.join(base_path, d))
+                            from datetime import datetime
+                            date_str = datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
+                            
+                            # Check for story files
+                            dir_path = os.path.join(base_path, d)
+                            gif_path = os.path.join(dir_path, "story.gif")
+                            script_path = os.path.join(dir_path, "story_script.json")
+                            
+                            gif_exists = "✅" if os.path.exists(gif_path) else "❌"
+                            script_exists = "✅" if os.path.exists(script_path) else "❌"
+                            
+                            # Format directory name
+                            dir_name = d
+                            if "_" in d and d[0].isdigit():  # If it's a timestamped name
+                                # Try to extract a more readable name after the timestamp
+                                parts = d.split("_", 2)  # Split at most 2 times
+                                if len(parts) > 2:
+                                    dir_name = parts[2].replace("_", " ")
+                            
+                            result += f"| {date_str} | {dir_name} | GIF: {gif_exists} Script: {script_exists} |\n"
+                        
+                        return result
+                    
+                    story_refresh_button.click(
+                        fn=list_story_folders,
+                        inputs=[story_save_path],
+                        outputs=[story_list]
+                    )
+                
+                # Event handlers for the story agent
+                def update_story_model_choices(provider):
+                    return gr.update(choices=utils.model_names.get(provider, []))
+                
+                story_llm_provider.change(
+                    fn=update_story_model_choices,
+                    inputs=[story_llm_provider],
+                    outputs=[story_llm_model_name]
+                )
+                
+                async def on_story_run_click(
+                    story_task, 
+                    story_llm_provider,
+                    story_llm_model_name, 
+                    story_image_model,
+                    story_save_path
+                ):
+                    # Show a loading state
+                    yield gr.update(visible=False), "Generating story...", None, list_story_folders(story_save_path)
+                    
+                    try:
+                        # Configure LLM
+                        llm = utils.create_llm_from_params(
+                            llm_provider=story_llm_provider,
+                            llm_model_name=story_llm_model_name,
+                            llm_temperature=0.7,
+                            llm_num_ctx=4096,
+                            llm_base_url="",
+                            llm_api_key="",
+                            max_input_tokens=8000
+                        )
+                        
+                        # Add additional OpenAI API key if available
+                        image_generation_api_key = os.getenv("OPENAI_API_KEY", "")
+                        
+                        # Run the story agent
+                        gif_path, errors, script_content, _, _, _ = await run_story_agent(
+                            llm=llm,
+                            task=story_task,
+                            image_generation_model=story_image_model,
+                            image_generation_api_key=image_generation_api_key,
+                            save_story_path=story_save_path
+                        )
+                        
+                        if errors:
+                            yield gr.update(value=errors, visible=True), "Error occurred during story generation", None, list_story_folders(story_save_path)
+                        else:
+                            # Get the actual folder path from the GIF path
+                            story_folder = os.path.dirname(gif_path) if gif_path else ""
+                            header = f"Story saved in: {story_folder}\n\n"
+                            formatted_script = header + (script_content or "Story generated successfully")
+                            yield gr.update(visible=False), formatted_script, gif_path, list_story_folders(story_save_path)
+                                
+                    except Exception as e:
+                        import traceback
+                        error_details = str(e) + "\n" + traceback.format_exc()
+                        yield gr.update(value=error_details, visible=True), "Error occurred during story generation", None, list_story_folders(story_save_path)
+                    
+                story_run_button.click(
+                    fn=on_story_run_click,
+                    inputs=[story_task, story_llm_provider, story_llm_model_name, story_image_model, story_save_path],
+                    outputs=[story_errors_output, story_script_output, story_image_output, story_list]
+                )
+                
+                async def on_story_stop_click():
+                    global _global_agent
+                    if _global_agent is not None:
+                        _global_agent.stop()
+                    return "Story generation stopped"
+                    
+                story_stop_button.click(
+                    fn=on_story_stop_click,
+                    outputs=[story_script_output]
+                )
 
             with gr.TabItem("🧐 Deep Research", id=5, elem_classes="card"):
                 research_task_input = gr.Textbox(

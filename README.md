@@ -231,3 +231,34 @@ CHROME_PERSISTENT_SESSION=true docker compose up --build
 - [x] **2025/01/26:** Thanks to @vvincent1234. Now browser-use-webui can combine with DeepSeek-r1 to engage in deep thinking!
 - [x] **2025/01/10:** Thanks to @casistack. Now we have Docker Setup option and also Support keep browser open between tasks.[Video tutorial demo](https://github.com/browser-use/web-ui/issues/1#issuecomment-2582511750).
 - [x] **2025/01/06:** Thanks to @richard-devbot. A New and Well-Designed WebUI is released. [Video tutorial demo](https://github.com/warmshao/browser-use-webui/issues/1#issuecomment-2573393113).
+
+## Story Agent
+
+The Story Agent is a creative AI assistant that can:
+1. Generate a story script using an LLM
+2. Create images for each scene in the story
+3. Combine these images into an animated GIF
+
+### Requirements
+- OpenAI API key (for image generation with DALL-E)
+- Add your OpenAI API key to the .env file: `OPENAI_API_KEY=your_key_here`
+
+### How to Use
+1. Navigate to the "Story Agent" tab in the Web UI
+2. Enter a topic or concept for your story
+3. Select the LLM provider and model for story generation
+4. Select the image generation model (DALL-E 3 recommended)
+5. Specify a save path for the story outputs
+6. Click "Generate Story" and wait for the process to complete
+7. View the generated story GIF and script
+
+The story generation process has three main steps:
+1. The LLM generates a JSON-formatted story script with multiple scenes
+2. Each scene description is sent to the image generation API
+3. The resulting images are combined into a GIF animation
+
+### Example
+- Story topic: "A space adventure with a brave astronaut and her robot companion exploring a new planet"
+- The agent will generate a multi-scene story script
+- Each scene will be visualized as an image
+- The final result is an animated story GIF

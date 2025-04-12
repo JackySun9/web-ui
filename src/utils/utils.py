@@ -344,9 +344,49 @@ def load_config_from_file(config_file):
 
 
 def save_config_to_file(settings, save_dir="./tmp/webui_settings"):
-    """Save the current settings to a UUID.json file with a UUID name."""
-    os.makedirs(save_dir, exist_ok=True)
-    config_file = os.path.join(save_dir, f"{uuid.uuid4()}.json")
-    with open(config_file, 'w') as f:
-        json.dump(settings, f, indent=2)
-    return f"Configuration saved to {config_file}"
+    """Save the WebUI settings to a file"""
+    try:
+        os.makedirs(save_dir, exist_ok=True)
+        config_id = str(uuid.uuid4())[:8]
+        filename = f"config_{config_id}.json"
+        file_path = os.path.join(save_dir, filename)
+        
+        with open(file_path, 'w') as f:
+            json.dump(settings, f, indent=2)
+        
+        return file_path
+    except Exception as e:
+        print(f"Error saving config: {e}")
+        return None
+
+
+def create_llm_from_params(
+    llm_provider,
+    llm_model_name,
+    llm_temperature,
+    llm_num_ctx,
+    llm_base_url,
+    llm_api_key,
+    max_input_tokens
+):
+    """
+    Create and return an LLM instance based on the provided parameters.
+    """
+    try:
+        # Get the LLM model
+        llm = get_llm_model(
+            provider=llm_provider,
+            model_name=llm_model_name,
+            temperature=llm_temperature,
+            num_ctx=llm_num_ctx,
+            base_url=llm_base_url,
+            api_key=llm_api_key
+        )
+        
+        return llm
+    except MissingAPIKeyError as e:
+        raise e
+    except Exception as e:
+        import traceback
+        error_details = str(e) + "\n" + traceback.format_exc()
+        raise Exception(f"Failed to create LLM: {error_details}")
