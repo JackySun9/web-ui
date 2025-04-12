@@ -187,3 +187,5 @@ data/
 
 # For Config Files (Current Settings)
 .config.pkl
+
+story_output/
