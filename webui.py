@@ -1287,6 +1287,34 @@ def create_ui(theme_name="Ocean"):
         border-color: var(--primary-color) !important;
         box-shadow: 0 0 0 2px rgba(74, 110, 224, 0.2) !important;
     }
+    
+    /* Improve visibility of text on video/gif components */
+    .caption-text-overlay {
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 3px;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+    }
+    
+    /* Style for video and gif components */
+    video::cue, .caption {
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        text-shadow: 1px 1px 2px black;
+    }
+    
+    /* Improve visibility of labels on dark backgrounds */
+    .video-container, .gif-container {
+        position: relative;
+    }
+    
+    .video-container .label, .gif-container .label {
+        background-color: rgba(0, 0, 0, 0.6);
+        color: white;
+        padding: 5px;
+        border-radius: 4px;
+    }
     """
 
     with gr.Blocks(
@@ -1558,7 +1586,7 @@ def create_ui(theme_name="Ocean"):
                     
                     with gr.Row():
                         with gr.Column():
-                            recording_gif = gr.Image(label="Result GIF", format="gif")
+                            recording_gif = gr.Image(label="Result GIF", format="gif", elem_classes=["gif-container"])
                         with gr.Column():
                             with gr.Row():
                                 trace_file = gr.File(label="Trace File")
@@ -1612,19 +1640,19 @@ def create_ui(theme_name="Ocean"):
                         with gr.Accordion("Advanced Animation Settings", open=False):
                             with gr.Row():
                                 story_gif_duration = gr.Slider(
-                                    minimum=0.5,
-                                    maximum=10.0,
-                                    value=3.0,
-                                    step=0.5,
+                                    minimum=10,
+                                    maximum=100.0,
+                                    value=5.0,
+                                    step=5,
                                     label="GIF Frame Duration (seconds)",
                                     info="Duration each frame is shown in the GIF"
                                 )
                                 
                                 story_video_duration = gr.Slider(
-                                    minimum=0.5,
-                                    maximum=10.0,
-                                    value=0.5,
-                                    step=0.5,
+                                    minimum=10,
+                                    maximum=100.0,
+                                    value=5.0,
+                                    step=5,
                                     label="Video Frame Duration (seconds)",
                                     info="Duration each frame is shown in the video"
                                 )
@@ -1679,12 +1707,14 @@ def create_ui(theme_name="Ocean"):
                             story_image_output = gr.Image(
                                 label="🎬 Story Animation",
                                 type="filepath",
-                                height=600
+                                height=600,
+                                elem_classes=["gif-container"]
                             )
                         with gr.TabItem("Video"):
                             story_video_output = gr.Video(
                                 label="🎬 Story Video",
-                                height=600
+                                height=600,
+                                elem_classes=["video-container"]
                             )
                     
                     story_files_output = gr.File(
@@ -1888,12 +1918,16 @@ def create_ui(theme_name="Ocean"):
                         
                     with gr.Row():
                         with gr.Column():
-                            test_recording_gif = gr.Image(label="Test Recording", format="gif")
+                            test_report_output = gr.Markdown(value="Test Results will appear here")
                         with gr.Column():
-                            with gr.Row():
-                                test_trace_file = gr.File(label="Trace File")
-                                test_agent_history = gr.File(label="Agent History")
-                        
+                            test_recording_gif = gr.Image(label="Test Recording", format="gif", elem_classes=["gif-container"])
+                    
+                    with gr.Row():
+                        with gr.Column():
+                            test_trace_file = gr.File(label="Trace File")
+                        with gr.Column():
+                            test_agent_history = gr.File(label="Agent History")
+                    
                     test_report = gr.File(label="Download Full Report")
                     
                     # Function to update visibility of config sections based on test type
