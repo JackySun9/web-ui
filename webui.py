@@ -533,6 +533,10 @@ async def run_story_agent(
         save_story_path=None,
         max_steps=10,
         use_image_seed=True,
+        gif_frame_duration=3.0,
+        video_frame_duration=0.5,
+        video_framerate=2,
+        variable_durations=None
 ):
     try:
         global _global_agent
@@ -550,6 +554,11 @@ async def run_story_agent(
             image_generation_api_key=image_generation_api_key,
             save_story_path=save_story_path,
             use_image_seed=use_image_seed,
+            generate_video=True,
+            video_framerate=video_framerate,
+            gif_frame_duration=gif_frame_duration,
+            video_frame_duration=video_frame_duration,
+            variable_durations=variable_durations
         )
         
         # Run the agent
@@ -558,6 +567,7 @@ async def run_story_agent(
         # Check if generation was successful
         if result.get("success", False):
             gif_path = result.get("gif_path")
+            video_path = result.get("video_path")
             script_path = result.get("script_path")
             
             # Read the script content
@@ -569,7 +579,7 @@ async def run_story_agent(
                 except Exception as e:
                     logger.error(f"Error reading script file: {e}")
             
-            return gif_path, '', script_content, '', None, script_path
+            return gif_path, '', script_content, '', video_path, script_path
         else:
             # Return the error message
             return '', result.get("error", "Story generation failed"), '', '', None, None
@@ -1598,84 +1608,150 @@ def create_ui(theme_name="Ocean"):
                                 info="Uses the same seed for all images to improve style consistency"
                             )
                     
-                    story_run_button = gr.Button("▶️ Generate Story", variant="primary")
-                    story_stop_button = gr.Button("⏹ Stop", variant="stop")
+                        # Add frame duration controls
+                        with gr.Accordion("Advanced Animation Settings", open=False):
+                            with gr.Row():
+                                story_gif_duration = gr.Slider(
+                                    minimum=0.5,
+                                    maximum=10.0,
+                                    value=3.0,
+                                    step=0.5,
+                                    label="GIF Frame Duration (seconds)",
+                                    info="Duration each frame is shown in the GIF"
+                                )
+                                
+                                story_video_duration = gr.Slider(
+                                    minimum=0.5,
+                                    maximum=10.0,
+                                    value=0.5,
+                                    step=0.5,
+                                    label="Video Frame Duration (seconds)",
+                                    info="Duration each frame is shown in the video"
+                                )
+                            
+                            with gr.Row():
+                                story_video_framerate = gr.Slider(
+                                    minimum=1,
+                                    maximum=30,
+                                    value=2,
+                                    step=1,
+                                    label="Video Framerate (FPS)",
+                                    info="Frames per second for video output"
+                                )
+                            
+                            story_use_variable = gr.Checkbox(
+                                label="Use Variable Durations",
+                                value=False,
+                                info="Enable to specify different durations for each frame"
+                            )
+                            
+                            story_variable_durations = gr.Textbox(
+                                label="Variable Durations (comma-separated seconds)",
+                                value="3.0, 2.0, 4.0, 3.0, 3.0, 3.0, 3.0, 3.0",
+                                info="Specify the duration for each frame in seconds, comma-separated",
+                                visible=False
+                            )
+                            
+                            # Show/hide variable durations input based on checkbox
+                            story_use_variable.change(
+                                fn=lambda use_var: gr.update(visible=use_var),
+                                inputs=[story_use_variable],
+                                outputs=[story_variable_durations]
+                            )
+    
+                story_run_button = gr.Button("▶️ Generate Story", variant="primary")
+                story_stop_button = gr.Button("⏹ Stop", variant="stop")
+                
+                with gr.Column():
+                    story_errors_output = gr.Textbox(
+                        label="Errors",
+                        value="",
+                        visible=False,
+                        lines=10
+                    )
+                    story_script_output = gr.Textbox(
+                        label="📚 Story Script",
+                        lines=10
+                    )
                     
-                    with gr.Column():
-                        story_errors_output = gr.Textbox(
-                            label="Errors",
-                            value="",
-                            visible=False,
-                            lines=10
-                        )
-                        story_script_output = gr.Textbox(
-                            label="📚 Story Script",
-                            lines=10
-                        )
-                        
-                        story_image_output = gr.Image(
-                            label="🎬 Story Animation",
-                            type="filepath",
-                            height=600
-                        )
+                    with gr.Tabs():
+                        with gr.TabItem("GIF"):
+                            story_image_output = gr.Image(
+                                label="🎬 Story Animation",
+                                type="filepath",
+                                height=600
+                            )
+                        with gr.TabItem("Video"):
+                            story_video_output = gr.Video(
+                                label="🎬 Story Video",
+                                height=600
+                            )
+                    
+                    story_files_output = gr.File(
+                        label="📦 Download Story Files",
+                        file_count="multiple"
+                    )
                 
                 # Section for previously generated stories
                 with gr.Accordion("📚 Previous Stories", open=False):
-                    story_refresh_button = gr.Button("🔄 Refresh", variant="secondary", scale=0.2)
+                    story_refresh_button = gr.Button("🔄 Refresh", variant="secondary", scale=1)
                     
                     story_list = gr.Markdown("Click Refresh to see previously generated stories")
+                
+                # Define the list_story_folders function here
+                def list_story_folders(base_path):
+                    """List the timestamped story folders with their creation dates"""
+                    if not os.path.exists(base_path):
+                        return "No stories found. Base directory doesn't exist."
                     
-                    def list_story_folders(base_path):
-                        """List the timestamped story folders with their creation dates"""
-                        if not os.path.exists(base_path):
-                            return "No stories found. Base directory doesn't exist."
-                        
-                        # Get all subdirectories in the base path
-                        story_dirs = [d for d in os.listdir(base_path) 
-                                     if os.path.isdir(os.path.join(base_path, d))]
-                        
-                        if not story_dirs:
-                            return "No stories found in the base directory."
-                        
-                        # Sort directories by creation time (newest first)
-                        story_dirs.sort(key=lambda d: os.path.getctime(os.path.join(base_path, d)), reverse=True)
-                        
-                        # Format the output as markdown
-                        result = "## Previous Stories\n\n"
-                        result += "| Date | Story | Files |\n"
-                        result += "|------|-------|-------|\n"
-                        
-                        for d in story_dirs:
-                            # Get creation time
-                            ctime = os.path.getctime(os.path.join(base_path, d))
-                            from datetime import datetime
-                            date_str = datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
-                            
-                            # Check for story files
-                            dir_path = os.path.join(base_path, d)
-                            gif_path = os.path.join(dir_path, "story.gif")
-                            script_path = os.path.join(dir_path, "story_script.json")
-                            
-                            gif_exists = "✅" if os.path.exists(gif_path) else "❌"
-                            script_exists = "✅" if os.path.exists(script_path) else "❌"
-                            
-                            # Format directory name
-                            dir_name = d
-                            if "_" in d and d[0].isdigit():  # If it's a timestamped name
-                                # Try to extract a more readable name after the timestamp
-                                parts = d.split("_", 2)  # Split at most 2 times
-                                if len(parts) > 2:
-                                    dir_name = parts[2].replace("_", " ")
-                            
-                            result += f"| {date_str} | {dir_name} | GIF: {gif_exists} Script: {script_exists} |\n"
-                        
-                        return result
+                    # Get all subdirectories in the base path
+                    story_dirs = [d for d in os.listdir(base_path) 
+                                 if os.path.isdir(os.path.join(base_path, d))]
                     
-                    story_refresh_button.click(
-                        fn=list_story_folders,
-                        inputs=[story_save_path],
-                        outputs=[story_list]
-                    )
+                    if not story_dirs:
+                        return "No stories found in the base directory."
+                    
+                    # Sort directories by creation time (newest first)
+                    story_dirs.sort(key=lambda d: os.path.getctime(os.path.join(base_path, d)), reverse=True)
+                    
+                    # Format the output as markdown
+                    result = "## Previous Stories\n\n"
+                    result += "| Date | Story | Files |\n"
+                    result += "|------|-------|-------|\n"
+                    
+                    for d in story_dirs:
+                        # Get creation time
+                        ctime = os.path.getctime(os.path.join(base_path, d))
+                        from datetime import datetime
+                        date_str = datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        # Check for story files
+                        dir_path = os.path.join(base_path, d)
+                        gif_path = os.path.join(dir_path, "story.gif")
+                        video_path = os.path.join(dir_path, "story.mp4")
+                        script_path = os.path.join(dir_path, "story_script.json")
+                        
+                        gif_exists = "✅" if os.path.exists(gif_path) else "❌"
+                        video_exists = "✅" if os.path.exists(video_path) else "❌"
+                        script_exists = "✅" if os.path.exists(script_path) else "❌"
+                        
+                        # Format directory name
+                        dir_name = d
+                        if "_" in d and d[0].isdigit():  # If it's a timestamped name
+                            # Try to extract a more readable name after the timestamp
+                            parts = d.split("_", 2)  # Split at most 2 times
+                            if len(parts) > 2:
+                                dir_name = parts[2].replace("_", " ")
+                        
+                        result += f"| {date_str} | {dir_name} | GIF: {gif_exists} Video: {video_exists} Script: {script_exists} |\n"
+                    
+                    return result
+                    
+                story_refresh_button.click(
+                    fn=list_story_folders,
+                    inputs=[story_save_path],
+                    outputs=[story_list]
+                )
                 
                 # Event handlers for the story agent
                 def update_story_model_choices(provider):
@@ -1685,73 +1761,6 @@ def create_ui(theme_name="Ocean"):
                     fn=update_story_model_choices,
                     inputs=[story_llm_provider],
                     outputs=[story_llm_model_name]
-                )
-                
-                async def on_story_run_click(
-                    story_task, 
-                    story_llm_provider,
-                    story_llm_model_name, 
-                    story_image_model,
-                    story_save_path,
-                    story_use_seed
-                ):
-                    # Show a loading state
-                    yield gr.update(visible=False), "Generating story...", None, list_story_folders(story_save_path)
-                    
-                    try:
-                        # Configure LLM
-                        llm = utils.create_llm_from_params(
-                            llm_provider=story_llm_provider,
-                            llm_model_name=story_llm_model_name,
-                            llm_temperature=0.7,
-                            llm_num_ctx=4096,
-                            llm_base_url="",
-                            llm_api_key="",
-                            max_input_tokens=8000
-                        )
-                        
-                        # Add additional OpenAI API key if available
-                        image_generation_api_key = os.getenv("OPENAI_API_KEY", "")
-                        
-                        # Run the story agent
-                        gif_path, errors, script_content, _, _, _ = await run_story_agent(
-                            llm=llm,
-                            task=story_task,
-                            image_generation_model=story_image_model,
-                            image_generation_api_key=image_generation_api_key,
-                            save_story_path=story_save_path,
-                            use_image_seed=story_use_seed,
-                        )
-                        
-                        if errors:
-                            yield gr.update(value=errors, visible=True), "Error occurred during story generation", None, list_story_folders(story_save_path)
-                        else:
-                            # Get the actual folder path from the GIF path
-                            story_folder = os.path.dirname(gif_path) if gif_path else ""
-                            header = f"Story saved in: {story_folder}\n\n"
-                            formatted_script = header + (script_content or "Story generated successfully")
-                            yield gr.update(visible=False), formatted_script, gif_path, list_story_folders(story_save_path)
-                                
-                    except Exception as e:
-                        import traceback
-                        error_details = str(e) + "\n" + traceback.format_exc()
-                        yield gr.update(value=error_details, visible=True), "Error occurred during story generation", None, list_story_folders(story_save_path)
-                    
-                story_run_button.click(
-                    fn=on_story_run_click,
-                    inputs=[story_task, story_llm_provider, story_llm_model_name, story_image_model, story_save_path, story_use_seed],
-                    outputs=[story_errors_output, story_script_output, story_image_output, story_list]
-                )
-                
-                async def on_story_stop_click():
-                    global _global_agent
-                    if _global_agent is not None:
-                        _global_agent.stop()
-                    return "Story generation stopped"
-                    
-                story_stop_button.click(
-                    fn=on_story_stop_click,
-                    outputs=[story_script_output]
                 )
 
             with gr.TabItem("🧐 Deep Research", id=5, elem_classes="card"):
@@ -2063,7 +2072,134 @@ def create_ui(theme_name="Ocean"):
             inputs=[],
             outputs=[stop_research_button, research_button],
         )
-    return demo
+
+        # Story Agent click handlers
+        async def on_story_run_click(
+            story_task, 
+            story_llm_provider,
+            story_llm_model_name, 
+            story_image_model,
+            story_save_path,
+            story_use_seed,
+            story_gif_duration,
+            story_video_duration,
+            story_video_framerate,
+            story_use_variable, 
+            story_variable_durations
+        ):
+            # Show a loading state
+            yield gr.update(visible=False), "Generating story...", None, None, None, list_story_folders(story_save_path)
+            
+            try:
+                # Configure LLM
+                llm = utils.create_llm_from_params(
+                    llm_provider=story_llm_provider,
+                    llm_model_name=story_llm_model_name,
+                    llm_temperature=0.7,
+                    llm_num_ctx=4096,
+                    llm_base_url="",
+                    llm_api_key="",
+                    max_input_tokens=8000
+                )
+                
+                # Parse variable durations if enabled
+                variable_durations_list = None
+                if story_use_variable and story_variable_durations:
+                    try:
+                        # Parse comma-separated string into list of floats
+                        variable_durations_list = [float(d.strip()) for d in story_variable_durations.split(',') if d.strip()]
+                        logger.info(f"Using variable durations: {variable_durations_list}")
+                    except Exception as e:
+                        logger.error(f"Error parsing variable durations: {e}")
+                
+                # Add additional OpenAI API key if available
+                image_generation_api_key = os.getenv("OPENAI_API_KEY", "")
+                
+                # Run the story agent
+                gif_path, errors, script_content, _, video_path, script_path = await run_story_agent(
+                    llm=llm,
+                    task=story_task,
+                    image_generation_model=story_image_model,
+                    image_generation_api_key=image_generation_api_key,
+                    save_story_path=story_save_path,
+                    use_image_seed=story_use_seed,
+                    gif_frame_duration=story_gif_duration,
+                    video_frame_duration=story_video_duration,
+                    video_framerate=story_video_framerate,
+                    variable_durations=variable_durations_list
+                )
+                
+                if errors:
+                    yield gr.update(value=errors, visible=True), "Error occurred during story generation", None, None, None, list_story_folders(story_save_path)
+                else:
+                    # Get the actual folder path from the GIF path
+                    story_folder = os.path.dirname(gif_path) if gif_path else ""
+                    header = f"Story saved in: {story_folder}\n\n"
+                    formatted_script = header + (script_content or "Story generated successfully")
+                    
+                    # Create a list of files to download
+                    download_files = []
+                    if gif_path and os.path.exists(gif_path):
+                        download_files.append(gif_path)
+                    if video_path and os.path.exists(video_path):
+                        download_files.append(video_path)
+                    if script_path and os.path.exists(script_path):
+                        download_files.append(script_path)
+                    
+                    # Update UI with results
+                    video_output = video_path if video_path and os.path.exists(video_path) else None
+                        
+                    yield (
+                        gr.update(visible=False), 
+                        formatted_script, 
+                        gif_path, 
+                        video_output, 
+                        download_files if download_files else None, 
+                        list_story_folders(story_save_path)
+                    )
+                        
+            except Exception as e:
+                import traceback
+                error_details = str(e) + "\n" + traceback.format_exc()
+                yield gr.update(value=error_details, visible=True), "Error occurred during story generation", None, None, None, list_story_folders(story_save_path)
+
+        story_run_button.click(
+            fn=on_story_run_click,
+            inputs=[
+                story_task, 
+                story_llm_provider, 
+                story_llm_model_name, 
+                story_image_model, 
+                story_save_path, 
+                story_use_seed,
+                story_gif_duration,
+                story_video_duration,
+                story_video_framerate,
+                story_use_variable,
+                story_variable_durations
+            ],
+            outputs=[
+                story_errors_output, 
+                story_script_output, 
+                story_image_output, 
+                story_video_output, 
+                story_files_output, 
+                story_list
+            ]
+        )
+
+        async def on_story_stop_click():
+            global _global_agent
+            if _global_agent is not None:
+                _global_agent.stop()
+            return "Story generation stopped"
+            
+        story_stop_button.click(
+            fn=on_story_stop_click,
+            outputs=[story_script_output]
+        )
+        
+        return demo
 
 
 def main():

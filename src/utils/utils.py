@@ -7,6 +7,7 @@ import requests
 import json
 import gradio as gr
 import uuid
+import logging
 
 from langchain_anthropic import ChatAnthropic
 from langchain_mistralai import ChatMistralAI
@@ -390,3 +391,52 @@ def create_llm_from_params(
         import traceback
         error_details = str(e) + "\n" + traceback.format_exc()
         raise Exception(f"Failed to create LLM: {error_details}")
+
+
+def create_video_from_images(image_folder, output_path, framerate=10, extension="jpg"):
+    """
+    Creates a video from a sequence of images using FFmpeg.
+    
+    Args:
+        image_folder: Directory containing the images
+        output_path: Path to save the output video
+        framerate: Frames per second for the video
+        extension: Image file extension to look for
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        import subprocess
+        import os
+        
+        # Ensure output directory exists
+        output_dir = os.path.dirname(output_path)
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # FFmpeg command to create video from image sequence
+        cmd = [
+            'ffmpeg',
+            '-y',  # Overwrite output file if it exists
+            '-framerate', str(framerate),
+            '-pattern_type', 'glob',
+            '-i', f'{image_folder}/*.{extension}',
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',  # Ensure dimensions are even (required by some codecs)
+            output_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logging.error(f"Error creating video: {result.stderr}")
+            return False
+            
+        logging.info(f"Video created successfully at {output_path}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error creating video: {str(e)}")
+        return False
