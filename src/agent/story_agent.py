@@ -3,11 +3,13 @@ import logging
 import os
 import asyncio
 import time
+import random
+import io
+import numpy as np
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Type, TypeVar
 
 from PIL import Image, ImageDraw, ImageFont
-import io
-import base64
+
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 
@@ -87,6 +89,8 @@ class StoryAgent(CustomAgent):
             image_generation_model: str = "dall-e-3",
             image_generation_api_key: Optional[str] = None,
             save_story_path: Optional[str] = None,
+            # Additional consistency options
+            use_image_seed: bool = True,
     ):
         super().__init__(
             task=task,
@@ -140,6 +144,10 @@ class StoryAgent(CustomAgent):
         self.story_images = []
         self.story_data = {}
         
+        # Consistency options
+        self.use_image_seed = use_image_seed
+        self.image_seed = self._generate_seed() if use_image_seed else None
+        
         logger.info(f"Story will be saved to: {self.save_story_path}")
     
     def _get_safe_title(self, task: str) -> str:
@@ -155,6 +163,12 @@ class StoryAgent(CustomAgent):
             safe_title = "story"
         return safe_title
     
+    def _generate_seed(self) -> int:
+        """Generate a consistent seed for image generation"""
+        import random
+        # Generate a stable seed within OpenAI's accepted range
+        return random.randint(1, 4294967295)  # Max 32-bit integer
+
     async def generate_story(self):
         """Generate a story script using the LLM"""
         logger.info("Generating story script...")
@@ -243,7 +257,7 @@ class StoryAgent(CustomAgent):
         try:
             import openai
             
-            # Initialize OpenAI client
+            # Initialize OpenAI client (or midjourney client based on model selection)
             client = openai.OpenAI(api_key=self.image_generation_api_key)
             
             # Create a detailed prompt that includes style and character consistency
@@ -276,10 +290,21 @@ class StoryAgent(CustomAgent):
             # Create the scene-specific prompt
             scene_prompt = scene.get('description', '')
             
+            # If using seed, add it to the prompt for consistency without relying on API parameter
+            seed_prompt = ""
+            if self.use_image_seed and self.image_seed is not None:
+                seed_prompt = f" Seed: {self.image_seed}."
+            
             # Combine all parts into a final prompt
-            final_prompt = f"{style_prompt}{characters_prompt}Scene: {scene_prompt}"
+            final_prompt = f"{style_prompt}{characters_prompt}Scene: {scene_prompt}{seed_prompt}"
+            
+            # Add a consistency reminder
+            if character_descriptions:
+                final_prompt += " Maintain consistent character appearances throughout the story."
             
             logger.info(f"Generating image for scene {scene.get('scene_number', 0)}...")
+            
+            # Make the image generation call without seed parameter to avoid compatibility issues
             response = client.images.generate(
                 model=self.image_generation_model,
                 prompt=final_prompt,
@@ -342,25 +367,25 @@ class StoryAgent(CustomAgent):
             logger.info(f"Image for scene {scene.get('scene_number', 0)} saved to {image_path}")
             return image
         except Exception as e:
-            logger.error(f"Failed to generate image for scene {scene['scene_number']}: {e}")
+            logger.error(f"Failed to generate image for scene {scene.get('scene_number', 0)}: {e}")
             # Create a simple text image as a fallback
             from PIL import Image, ImageDraw, ImageFont
             img = Image.new('RGB', (1024, 1024), color=(255, 255, 255))
             d = ImageDraw.Draw(img)
             
             # Add scene number and description
-            d.text((10, 10), f"Scene {scene['scene_number']}", fill=(0, 0, 0))
+            d.text((10, 10), f"Scene {scene.get('scene_number', 0)}", fill=(0, 0, 0))
             
             # Wrap the description text
-            wrapped_desc = self._wrap_text(scene['description'], ImageFont.load_default(), 1000)
+            wrapped_desc = self._wrap_text(scene.get('description', ''), ImageFont.load_default(), 1000)
             y = 50
             for line in wrapped_desc:
                 d.text((10, y), line, fill=(0, 0, 0))
                 y += 20
             
-            image_path = os.path.join(self.save_story_path, f"scene_{scene['scene_number']}.png")
+            image_path = os.path.join(self.save_story_path, f"scene_{scene.get('scene_number', 0)}.png")
             img.save(image_path)
-            logger.info(f"Fallback image for scene {scene['scene_number']} saved to {image_path}")
+            logger.info(f"Fallback image for scene {scene.get('scene_number', 0)} saved to {image_path}")
             return img
     
     def _wrap_text(self, text, font, max_width):

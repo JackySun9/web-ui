@@ -532,6 +532,7 @@ async def run_story_agent(
         image_generation_api_key=None,
         save_story_path=None,
         max_steps=10,
+        use_image_seed=True,
 ):
     try:
         global _global_agent
@@ -548,6 +549,7 @@ async def run_story_agent(
             image_generation_model=image_generation_model,
             image_generation_api_key=image_generation_api_key,
             save_story_path=save_story_path,
+            use_image_seed=use_image_seed,
         )
         
         # Run the agent
@@ -1577,11 +1579,10 @@ def create_ui(theme_name="Ocean"):
                             info="Choose the LLM model for story generation"
                         )
                         story_image_model = gr.Dropdown(
-                            label="Image Generation Model",
+                            ["dall-e-3", "dall-e-2"],
+                            label="Image Generation Model", 
                             value="dall-e-3",
-                            interactive=True,
-                            choices=["dall-e-3", "dall-e-2", "midjourney"],
-                            info="Model to use for generating scene images"
+                            info="Select the image generation model to use"
                         )
                         story_save_path = gr.Textbox(
                             label="Save Path",
@@ -1590,9 +1591,16 @@ def create_ui(theme_name="Ocean"):
                             info="Base directory for stories - each story gets its own timestamped folder"
                         )
                         
-                        story_run_button = gr.Button("🚀 Generate Story", variant="primary")
-                        story_stop_button = gr.Button("🛑 Stop Generation", variant="stop")
-                        
+                        with gr.Row():
+                            story_use_seed = gr.Checkbox(
+                                label="Use Consistent Seed", 
+                                value=True,
+                                info="Uses the same seed for all images to improve style consistency"
+                            )
+                    
+                    story_run_button = gr.Button("▶️ Generate Story", variant="primary")
+                    story_stop_button = gr.Button("⏹ Stop", variant="stop")
+                    
                     with gr.Column():
                         story_errors_output = gr.Textbox(
                             label="Errors",
@@ -1684,7 +1692,8 @@ def create_ui(theme_name="Ocean"):
                     story_llm_provider,
                     story_llm_model_name, 
                     story_image_model,
-                    story_save_path
+                    story_save_path,
+                    story_use_seed
                 ):
                     # Show a loading state
                     yield gr.update(visible=False), "Generating story...", None, list_story_folders(story_save_path)
@@ -1710,7 +1719,8 @@ def create_ui(theme_name="Ocean"):
                             task=story_task,
                             image_generation_model=story_image_model,
                             image_generation_api_key=image_generation_api_key,
-                            save_story_path=story_save_path
+                            save_story_path=story_save_path,
+                            use_image_seed=story_use_seed,
                         )
                         
                         if errors:
@@ -1729,7 +1739,7 @@ def create_ui(theme_name="Ocean"):
                     
                 story_run_button.click(
                     fn=on_story_run_click,
-                    inputs=[story_task, story_llm_provider, story_llm_model_name, story_image_model, story_save_path],
+                    inputs=[story_task, story_llm_provider, story_llm_model_name, story_image_model, story_save_path, story_use_seed],
                     outputs=[story_errors_output, story_script_output, story_image_output, story_list]
                 )
                 
