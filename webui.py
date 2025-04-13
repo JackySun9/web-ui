@@ -564,7 +564,7 @@ async def run_story_agent(
             script_content = ""
             if script_path and os.path.exists(script_path):
                 try:
-                    with open(script_path, 'r') as f:
+                    with open(script_path, 'r', encoding='utf-8') as f:
                         script_content = f.read()
                 except Exception as e:
                     logger.error(f"Error reading script file: {e}")
