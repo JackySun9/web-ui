@@ -1622,6 +1622,52 @@ def create_ui(theme_name="Ocean"):
                             value="dall-e-3",
                             info="Select the image generation model to use"
                         )
+                        
+                        # Add local Stable Diffusion option
+                        with gr.Row():
+                            story_use_local_generation = gr.Checkbox(
+                                label="Use Local Stable Diffusion Server", 
+                                value=False,
+                                info="Use a local Stable Diffusion server instead of OpenAI"
+                            )
+                        
+                        # Add local generation settings
+                        with gr.Accordion("Local Stable Diffusion Settings", open=False, visible=False) as local_sd_accordion:
+                            story_local_generation_url = gr.Textbox(
+                                label="Server URL",
+                                value="http://localhost:8000",
+                                info="URL of your local Stable Diffusion server"
+                            )
+                            with gr.Row():
+                                story_local_generation_steps = gr.Slider(
+                                    minimum=1,
+                                    maximum=150,
+                                    value=20,
+                                    step=1,
+                                    label="Inference Steps",
+                                    info="Higher values = better quality but slower generation"
+                                )
+                                story_local_generation_guidance = gr.Slider(
+                                    minimum=1.0,
+                                    maximum=20.0,
+                                    value=7.5,
+                                    step=0.5,
+                                    label="Guidance Scale",
+                                    info="How closely to follow prompt (higher = more faithful)"
+                                )
+                            story_local_generation_negative = gr.Textbox(
+                                label="Negative Prompt",
+                                value="low quality, bad anatomy, worst quality, low resolution",
+                                info="Things to avoid in generated images"
+                            )
+                        
+                        # Show/hide local SD settings based on checkbox
+                        story_use_local_generation.change(
+                            fn=lambda use_local: gr.update(visible=use_local),
+                            inputs=[story_use_local_generation],
+                            outputs=[local_sd_accordion]
+                        )
+                        
                         story_save_path = gr.Textbox(
                             label="Save Path",
                             value="story_output",
@@ -1731,52 +1777,59 @@ def create_ui(theme_name="Ocean"):
                 # Define the list_story_folders function here
                 def list_story_folders(base_path):
                     """List the timestamped story folders with their creation dates"""
-                    if not os.path.exists(base_path):
+                    if not base_path or not os.path.exists(base_path):
+                        # Return a message instead of an error when the directory doesn't exist
                         return "No stories found. Base directory doesn't exist."
                     
-                    # Get all subdirectories in the base path
-                    story_dirs = [d for d in os.listdir(base_path) 
-                                 if os.path.isdir(os.path.join(base_path, d))]
-                    
-                    if not story_dirs:
-                        return "No stories found in the base directory."
-                    
-                    # Sort directories by creation time (newest first)
-                    story_dirs.sort(key=lambda d: os.path.getctime(os.path.join(base_path, d)), reverse=True)
-                    
-                    # Format the output as markdown
-                    result = "## Previous Stories\n\n"
-                    result += "| Date | Story | Files |\n"
-                    result += "|------|-------|-------|\n"
-                    
-                    for d in story_dirs:
-                        # Get creation time
-                        ctime = os.path.getctime(os.path.join(base_path, d))
-                        from datetime import datetime
-                        date_str = datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
+                    try:
+                        # Get all subdirectories in the base path
+                        story_dirs = [d for d in os.listdir(base_path) 
+                                    if os.path.isdir(os.path.join(base_path, d))]
                         
-                        # Check for story files
-                        dir_path = os.path.join(base_path, d)
-                        gif_path = os.path.join(dir_path, "story.gif")
-                        video_path = os.path.join(dir_path, "story.mp4")
-                        script_path = os.path.join(dir_path, "story_script.json")
+                        if not story_dirs:
+                            return "No stories found in the base directory."
                         
-                        gif_exists = "✅" if os.path.exists(gif_path) else "❌"
-                        video_exists = "✅" if os.path.exists(video_path) else "❌"
-                        script_exists = "✅" if os.path.exists(script_path) else "❌"
+                        # Sort directories by creation time (newest first)
+                        story_dirs.sort(key=lambda d: os.path.getctime(os.path.join(base_path, d)), reverse=True)
                         
-                        # Format directory name
-                        dir_name = d
-                        if "_" in d and d[0].isdigit():  # If it's a timestamped name
-                            # Try to extract a more readable name after the timestamp
-                            parts = d.split("_", 2)  # Split at most 2 times
-                            if len(parts) > 2:
-                                dir_name = parts[2].replace("_", " ")
+                        # Format the output as markdown
+                        result = "## Previous Stories\n\n"
+                        result += "| Date | Story | Files |\n"
+                        result += "|------|-------|-------|\n"
                         
-                        result += f"| {date_str} | {dir_name} | GIF: {gif_exists} Video: {video_exists} Script: {script_exists} |\n"
-                    
-                    return result
-                    
+                        for d in story_dirs:
+                            # Get creation time
+                            ctime = os.path.getctime(os.path.join(base_path, d))
+                            from datetime import datetime
+                            date_str = datetime.fromtimestamp(ctime).strftime("%Y-%m-%d %H:%M:%S")
+                            
+                            # Check for story files
+                            dir_path = os.path.join(base_path, d)
+                            gif_path = os.path.join(dir_path, "story.gif")
+                            video_path = os.path.join(dir_path, "story.mp4")
+                            script_path = os.path.join(dir_path, "story_script.json")
+                            
+                            gif_exists = "✅" if os.path.exists(gif_path) else "❌"
+                            video_exists = "✅" if os.path.exists(video_path) else "❌"
+                            script_exists = "✅" if os.path.exists(script_path) else "❌"
+                            
+                            # Format directory name
+                            dir_name = d
+                            if "_" in d and d[0].isdigit():  # If it's a timestamped name
+                                # Try to extract a more readable name after the timestamp
+                                parts = d.split("_", 2)  # Split at most 2 times
+                                if len(parts) > 2:
+                                    dir_name = parts[2].replace("_", " ")
+                            
+                            result += f"| {date_str} | {dir_name} | GIF: {gif_exists} Video: {video_exists} Script: {script_exists} |\n"
+                        
+                        return result
+                    except Exception as e:
+                        # Handle any other errors gracefully
+                        import traceback
+                        logger.error(f"Error in list_story_folders: {e}\n{traceback.format_exc()}")
+                        return "Error listing story folders. Check logs for details."
+
                 story_refresh_button.click(
                     fn=list_story_folders,
                     inputs=[story_save_path],
@@ -2113,6 +2166,11 @@ def create_ui(theme_name="Ocean"):
             story_llm_provider,
             story_llm_model_name, 
             story_image_model,
+            story_use_local_generation,
+            story_local_generation_url,
+            story_local_generation_steps,
+            story_local_generation_guidance,
+            story_local_generation_negative,
             story_save_path,
             story_use_seed,
             story_gif_duration,
@@ -2150,9 +2208,12 @@ def create_ui(theme_name="Ocean"):
                 image_generation_api_key = os.getenv("OPENAI_API_KEY", "")
                 
                 # Run the story agent
-                gif_path, errors, script_content, _, video_path, script_path = await run_story_agent(
-                    llm=llm,
+                from src.agent.story_agent import StoryAgent
+                
+                # Create the story agent with appropriate parameters
+                story_agent = StoryAgent(
                     task=story_task,
+                    llm=llm,
                     image_generation_model=story_image_model,
                     image_generation_api_key=image_generation_api_key,
                     save_story_path=story_save_path,
@@ -2160,15 +2221,48 @@ def create_ui(theme_name="Ocean"):
                     gif_frame_duration=story_gif_duration,
                     video_frame_duration=story_video_duration,
                     video_framerate=story_video_framerate,
-                    variable_durations=variable_durations_list
+                    variable_durations=variable_durations_list,
+                    # Local Stable Diffusion options
+                    use_local_generation=story_use_local_generation,
+                    local_generation_url=story_local_generation_url,
+                    local_generation_steps=story_local_generation_steps,
+                    local_generation_guidance_scale=story_local_generation_guidance,
+                    local_generation_negative_prompt=story_local_generation_negative
                 )
                 
-                if errors:
+                # Set the global agent reference
+                global _global_agent
+                _global_agent = story_agent
+                
+                # Run the agent
+                result = await story_agent.run()
+                
+                if not result.get("success", False):
+                    errors = result.get("error", "Story generation failed")
                     yield gr.update(value=errors, visible=True), "Error occurred during story generation", None, None, None, list_story_folders(story_save_path)
                 else:
+                    # Get paths from result
+                    gif_path = result.get("gif_path")
+                    video_path = result.get("video_path") 
+                    script_path = result.get("script_path")
+                    
+                    # Read the script content
+                    script_content = ""
+                    if script_path and os.path.exists(script_path):
+                        try:
+                            with open(script_path, 'r', encoding='utf-8') as f:
+                                script_content = f.read()
+                        except Exception as e:
+                            logger.error(f"Error reading script file: {e}")
+                    
                     # Get the actual folder path from the GIF path
                     story_folder = os.path.dirname(gif_path) if gif_path else ""
+                    
+                    # Add image generation method to output
+                    image_method = result.get("image_generation_method", "unknown")
                     header = f"Story saved in: {story_folder}\n\n"
+                    header += f"Image generation: {image_method}\n\n"
+                    
                     formatted_script = header + (script_content or "Story generated successfully")
                     
                     # Create a list of files to download
@@ -2204,6 +2298,11 @@ def create_ui(theme_name="Ocean"):
                 story_llm_provider, 
                 story_llm_model_name, 
                 story_image_model, 
+                story_use_local_generation,
+                story_local_generation_url,
+                story_local_generation_steps,
+                story_local_generation_guidance,
+                story_local_generation_negative,
                 story_save_path, 
                 story_use_seed,
                 story_gif_duration,

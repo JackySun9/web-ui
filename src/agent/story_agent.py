@@ -6,7 +6,8 @@ import time
 import random
 import io
 import numpy as np
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Type, TypeVar
+import requests
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -34,6 +35,72 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 Context = TypeVar('Context')
+
+class StableDiffusionClient:
+    def __init__(self, base_url="http://localhost:8000"):
+        self.base_url = base_url
+        logging.getLogger(__name__).info(f"Initialized StableDiffusionClient with base URL: {base_url}")
+
+    def generate_image(
+        self,
+        prompt: str,
+        num_inference_steps: int = 20,
+        guidance_scale: float = 7.5,
+        negative_prompt: str = "low quality, bad anatomy, worst quality, low resolution"
+    ) -> Image.Image:
+        """
+        Generate an image using Stable Diffusion v1.5
+        
+        Args:
+            prompt: Text description of the desired image
+            num_inference_steps: Number of denoising steps (higher = better quality but slower)
+            guidance_scale: How closely to follow the prompt (higher = more faithful but less creative)
+            negative_prompt: Text description of what to avoid in the image
+            
+        Returns:
+            PIL Image object
+        """
+        payload = {
+            "prompt": prompt,
+            "num_inference_steps": num_inference_steps,
+            "guidance_scale": guidance_scale,
+            "negative_prompt": negative_prompt
+        }
+        
+        logger = logging.getLogger(__name__)
+        logger.info(f"Sending request to Stable Diffusion server with prompt: {prompt[:50]}...")
+        
+        try:
+            response = requests.post(f"{self.base_url}/predict", json=payload)
+            
+            # Log response details for debugging
+            logger.info(f"Response status code: {response.status_code}")
+            logger.info(f"Response content type: {response.headers.get('content-type', 'unknown')}")
+            logger.info(f"Response content length: {len(response.content)}")
+            
+            if response.status_code != 200:
+                error_msg = f"Error generating image: {response.status_code} - {response.text[:200]}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+            
+            # Check if response contains image data
+            if not response.content or len(response.content) < 100:
+                error_msg = f"Response doesn't contain valid image data. Content length: {len(response.content)}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+                
+            # Convert raw bytes to PIL Image
+            try:
+                return Image.open(io.BytesIO(response.content))
+            except Exception as e:
+                error_msg = f"Failed to create PIL Image from response content: {str(e)}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+                
+        except requests.RequestException as e:
+            error_msg = f"Request to Stable Diffusion server failed: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
 
 class StoryAgent(CustomAgent):
     """
@@ -87,7 +154,7 @@ class StoryAgent(CustomAgent):
             planner_llm: Optional[BaseChatModel] = None,
             planner_interval: int = 1,  # Run planner every N steps
             # Inject state
-            injected_agent_state: Optional[AgentState] = None,
+            injected_agent_state: Optional[Union[AgentState, CustomAgentState]] = None,
             context: Context | None = None,
             # Story agent specific
             image_generation_model: str = "dall-e-3",
@@ -100,7 +167,13 @@ class StoryAgent(CustomAgent):
             # Frame duration control
             gif_frame_duration: float = 3.0,  # Duration in seconds for each frame in GIF
             video_frame_duration: float = 0.5,  # Duration in seconds for each frame in video
-            variable_durations: Optional[List[float]] = None  # Optional list of durations for each frame
+            variable_durations: Optional[List[float]] = None,  # Optional list of durations for each frame
+            # Local image generation options
+            use_local_generation: bool = False,
+            local_generation_url: str = "http://localhost:8000",
+            local_generation_steps: int = 20,
+            local_generation_guidance_scale: float = 7.5,
+            local_generation_negative_prompt: str = "low quality, bad anatomy, worst quality, low resolution"
     ):
         super().__init__(
             task=task,
@@ -133,7 +206,7 @@ class StoryAgent(CustomAgent):
             page_extraction_llm=page_extraction_llm,
             planner_llm=planner_llm,
             planner_interval=planner_interval,
-            injected_agent_state=injected_agent_state,
+            injected_agent_state=injected_agent_state if not isinstance(injected_agent_state, CustomAgentState) else AgentState(),
             context=context,
         )
         
@@ -174,6 +247,28 @@ class StoryAgent(CustomAgent):
         self.story_frames = []
         self.story_script = {}
         self.seed = None if not use_image_seed else str(datetime.now().timestamp())
+        
+        # Stable Diffusion local generation options
+        self.use_local_generation = use_local_generation
+        self.local_generation_url = local_generation_url
+        self.local_generation_steps = local_generation_steps
+        self.local_generation_guidance_scale = local_generation_guidance_scale
+        self.local_generation_negative_prompt = local_generation_negative_prompt
+        
+        if use_local_generation:
+            try:
+                self.sd_client = StableDiffusionClient(base_url=local_generation_url)
+                # Test the connection
+                logger.info(f"Testing connection to local Stable Diffusion server at {local_generation_url}...")
+                response = requests.get(f"{local_generation_url}/docs", timeout=5)
+                if response.status_code == 200:
+                    logger.info("Successfully connected to local Stable Diffusion server")
+                else:
+                    logger.warning(f"Local Stable Diffusion server responded with status code {response.status_code}")
+            except Exception as e:
+                logger.error(f"Failed to initialize local Stable Diffusion client: {e}")
+                logger.warning("Falling back to OpenAI for image generation")
+                self.use_local_generation = False
         
         # Flag for stopping
         self.stopped = False
@@ -385,12 +480,7 @@ class StoryAgent(CustomAgent):
     async def generate_image_for_scene(self, scene):
         """Generate an image for a scene using an image generation service"""
         try:
-            import openai
-            
-            # Initialize OpenAI client (or midjourney client based on model selection)
-            client = openai.OpenAI(api_key=self.image_generation_api_key)
-            
-            # Create a detailed prompt that includes style and character consistency
+            # Build the prompt
             style_guide = getattr(self, 'story_data', {}).get('style_guide', {})
             characters = getattr(self, 'story_data', {}).get('characters', [])
             settings = getattr(self, 'story_data', {}).get('settings', [])
@@ -450,27 +540,66 @@ class StoryAgent(CustomAgent):
             
             logger.info(f"Generating image for scene {scene.get('scene_number', 0)}...")
             
-            # Make the image generation call without seed parameter to avoid compatibility issues
-            response = client.images.generate(
-                model=self.image_generation_model,
-                prompt=final_prompt,
-                n=1,
-                size="1024x1024"
-            )
-            
-            # Get the image URL (ensure it's a string)
-            image_url = response.data[0].url
-            if image_url is None:
-                raise ValueError("Image URL is None")
+            # Generate image using either local Stable Diffusion or OpenAI API
+            if self.use_local_generation:
+                logger.info(f"Using local Stable Diffusion for scene {scene.get('scene_number', 0)}")
+                try:
+                    image = self.sd_client.generate_image(
+                        prompt=final_prompt,
+                        num_inference_steps=self.local_generation_steps,
+                        guidance_scale=self.local_generation_guidance_scale,
+                        negative_prompt=self.local_generation_negative_prompt
+                    )
+                    # Verify the image was created correctly
+                    from PIL import Image as PILImage
+                    if not image or not isinstance(image, PILImage.Image):
+                        raise ValueError(f"Invalid image returned from local generation: {type(image)}")
+                    
+                    logger.info(f"Successfully generated image locally for scene {scene.get('scene_number', 0)}")
+                except Exception as e:
+                    logger.error(f"Local image generation failed: {e}")
+                    logger.info("Creating a fallback image")
+                    
+                    # Create a simple fallback image with error text
+                    from PIL import Image as PILImage
+                    from PIL import ImageDraw
+                    
+                    fallback_img = PILImage.new('RGB', (1024, 1024), color=(255, 255, 255))
+                    draw = ImageDraw.Draw(fallback_img)
+                    draw.text((10, 10), f"Error: {str(e)[:100]}", fill=(0, 0, 0))
+                    draw.text((10, 40), f"Scene: {scene.get('scene_number', 0)}", fill=(0, 0, 0))
+                    draw.text((10, 70), f"Prompt: {final_prompt[:100]}...", fill=(0, 0, 0))
+                    
+                    image = fallback_img
+                    logger.warning(f"Using fallback image for scene {scene.get('scene_number', 0)}")
+            else:
+                # Use OpenAI for image generation
+                import openai
                 
-            # Download the image
-            import requests
-            image_response = requests.get(str(image_url))
-            from PIL import Image
-            image = Image.open(io.BytesIO(image_response.content))
+                # Initialize OpenAI client (or midjourney client based on model selection)
+                client = openai.OpenAI(api_key=self.image_generation_api_key)
+                
+                # Make the image generation call without seed parameter to avoid compatibility issues
+                response = client.images.generate(
+                    model=self.image_generation_model,
+                    prompt=final_prompt,
+                    n=1,
+                    size="1024x1024"
+                )
+                
+                # Get the image URL (ensure it's a string)
+                image_url = response.data[0].url
+                if image_url is None:
+                    raise ValueError("Image URL is None")
+                    
+                # Download the image
+                import requests
+                image_response = requests.get(str(image_url))
+                from PIL import Image
+                image = Image.open(io.BytesIO(image_response.content))
             
             # Add scene description to the image
-            from PIL import ImageDraw, ImageFont
+            from PIL import Image, ImageDraw, ImageFont
             draw = ImageDraw.Draw(image)
             
             # Try to load a font that supports multi-language characters (especially Chinese)
@@ -548,25 +677,41 @@ class StoryAgent(CustomAgent):
             return image
         except Exception as e:
             logger.error(f"Failed to generate image for scene {scene.get('scene_number', 0)}: {e}")
-            # Create a simple text image as a fallback
-            from PIL import Image, ImageDraw, ImageFont
-            img = Image.new('RGB', (1024, 1024), color=(255, 255, 255))
-            d = ImageDraw.Draw(img)
-            
-            # Add scene number and description
-            d.text((10, 10), f"Scene {scene.get('scene_number', 0)}", fill=(0, 0, 0))
-            
-            # Wrap the description text
-            wrapped_desc = self._wrap_text(scene.get('description', ''), ImageFont.load_default(), 1000)
-            y = 50
-            for line in wrapped_desc:
-                d.text((10, y), line, fill=(0, 0, 0))
-                y += 20
-            
-            image_path = os.path.join(self.save_story_path, f"scene_{scene.get('scene_number', 0)}.png")
-            img.save(image_path)
-            logger.info(f"Fallback image for scene {scene.get('scene_number', 0)} saved to {image_path}")
-            return img
+            try:
+                # Create a simple text image as a fallback
+                # Import PIL modules here with explicit aliases to avoid scoping issues
+                from PIL import Image as PILImage
+                from PIL import ImageDraw
+                from PIL import ImageFont
+                
+                img = PILImage.new('RGB', (1024, 1024), color=(255, 255, 255))
+                d = ImageDraw.Draw(img)
+                
+                # Add scene number and description
+                d.text((10, 10), f"Scene {scene.get('scene_number', 0)}", fill=(0, 0, 0))
+                
+                # Get default font
+                default_font = ImageFont.load_default()
+                
+                # Wrap the description text
+                wrapped_desc = self._wrap_text(scene.get('description', ''), default_font, 1000)
+                y = 50
+                for line in wrapped_desc:
+                    d.text((10, y), line, fill=(0, 0, 0))
+                    y += 20
+                
+                image_path = os.path.join(self.save_story_path, f"scene_{scene.get('scene_number', 0)}.png")
+                img.save(image_path)
+                logger.info(f"Fallback image for scene {scene.get('scene_number', 0)} saved to {image_path}")
+                return img
+            except Exception as inner_e:
+                # If even the fallback fails, log and return a minimal image
+                logger.error(f"Failed to create fallback image: {inner_e}")
+                from PIL import Image as PILImage
+                minimal_img = PILImage.new('RGB', (512, 512), color=(200, 200, 200))
+                minimal_path = os.path.join(self.save_story_path, f"scene_{scene.get('scene_number', 0)}_minimal.png")
+                minimal_img.save(minimal_path)
+                return minimal_img
     
     def _wrap_text(self, text, font, max_width):
         """Helper function to wrap text to fit within a given width, supporting both English and Chinese"""
@@ -778,6 +923,12 @@ class StoryAgent(CustomAgent):
         try:
             logger.info(f"Starting story generation for task: {self.task}")
             
+            # Log which image generation method we're using
+            if self.use_local_generation:
+                logger.info(f"Using local Stable Diffusion server at {self.local_generation_url}")
+            else:
+                logger.info(f"Using OpenAI {self.image_generation_model} for image generation")
+            
             # Step 1: Generate story script
             self.story_data = await self.generate_story()
             
@@ -802,6 +953,7 @@ class StoryAgent(CustomAgent):
                 "gif_path": output_gif_path,
                 "video_path": output_video_path,
                 "script_path": os.path.join(self.save_story_path, "story_script.json"),
+                "image_generation_method": "local_stable_diffusion" if self.use_local_generation else f"openai_{self.image_generation_model}",
                 "error": None
             }
             
