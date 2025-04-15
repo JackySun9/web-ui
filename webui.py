@@ -1686,18 +1686,18 @@ def create_ui(theme_name="Ocean"):
                         with gr.Accordion("Advanced Animation Settings", open=False):
                             with gr.Row():
                                 story_gif_duration = gr.Slider(
-                                    minimum=10,
+                                    minimum=5.0,
                                     maximum=100.0,
-                                    value=5.0,
+                                    value=10.0,
                                     step=5,
                                     label="GIF Frame Duration (seconds)",
                                     info="Duration each frame is shown in the GIF"
                                 )
                                 
                                 story_video_duration = gr.Slider(
-                                    minimum=10,
+                                    minimum=5.0,
                                     maximum=100.0,
-                                    value=5.0,
+                                    value=10.0,
                                     step=5,
                                     label="Video Frame Duration (seconds)",
                                     info="Duration each frame is shown in the video"

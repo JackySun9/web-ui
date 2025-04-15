@@ -796,23 +796,18 @@ class StoryAgent(CustomAgent):
             
         logger.info(f"Creating story GIF at {output_path}...")
         
-        # Use variable durations if provided
-        if self.variable_durations and len(self.variable_durations) >= len(images):
-            # Convert seconds to milliseconds
-            durations = [int(d * 1000) for d in self.variable_durations[:len(images)]]
-            logger.info(f"Using variable frame durations: {durations}")
-        else:
-            # Use fixed duration (converted from seconds to milliseconds)
-            durations = int(self.gif_frame_duration * 1000)
-            logger.info(f"Using fixed frame duration: {durations}ms")
+        # Convert seconds to milliseconds for PIL
+        duration_ms = int(self.gif_frame_duration * 1000)
         
-        # Save the first image as GIF and append the rest
+        logger.info(f"Setting each frame to display for {self.gif_frame_duration} seconds ({duration_ms}ms)")
+        
+        # Save the GIF with the specified duration
         images[0].save(
             output_path,
             save_all=True,
             append_images=images[1:],
             optimize=False,
-            duration=durations,  # Use the durations (fixed or variable)
+            duration=duration_ms,  # Duration in milliseconds
             loop=0  # Loop indefinitely
         )
         
@@ -942,16 +937,18 @@ class StoryAgent(CustomAgent):
             # Step 3: Create the story GIF
             gif_path = await self.create_story_gif(images)
             
-            # Step 4: Generate output files
-            output_gif_path, output_video_path = await self.generate_output_files()
+            # Step 4: Generate video (if enabled)
+            video_path = None
+            if self.generate_video:
+                _, video_path = await self.generate_output_files()
             
             # Return a simple result dictionary
             result = {
                 "success": True,
                 "task": self.task,
                 "scenes": len(self.story_data['scenes']),
-                "gif_path": output_gif_path,
-                "video_path": output_video_path,
+                "gif_path": gif_path,
+                "video_path": video_path,
                 "script_path": os.path.join(self.save_story_path, "story_script.json"),
                 "image_generation_method": "local_stable_diffusion" if self.use_local_generation else f"openai_{self.image_generation_model}",
                 "error": None
