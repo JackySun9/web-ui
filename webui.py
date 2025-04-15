@@ -49,6 +49,9 @@ _global_agent_state = AgentState()
 # webui config
 webui_config_manager = utils.ConfigManager()
 
+# Get model names from utils
+llm_models = utils.model_names if hasattr(utils, 'model_names') else {}
+
 
 def scan_and_register_components(blocks):
     """扫描一个 Blocks 对象并注册其中的所有交互式组件，但不包括按钮"""
@@ -1167,14 +1170,15 @@ async def handle_website_test(test_type, test_url,
 def create_ui(theme_name="Ocean"):
     css = """
     :root {
-        --primary-color: #4a6ee0;
-        --secondary-color: #45a9b3;
-        --background-color: #f9fafb;
-        --card-background: #ffffff;
+        --primary-color: #4A6EE0;
+        --primary-color-hover: #3955b5;
+        --secondary-color: #6FA8DC;
         --text-color: #333333;
+        --background-color: #f9f9fd;
+        --card-background: #ffffff;
         --border-color: #e0e0e0;
-        --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        --border-radius: 8px;
+        --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --border-radius: 10px;
     }
 
     body {
@@ -1182,81 +1186,117 @@ def create_ui(theme_name="Ocean"):
     }
 
     .gradio-container {
-        max-width: 1200px !important; 
+        max-width: 1300px !important; 
         margin-left: auto !important;
         margin-right: auto !important;
-        padding: 20px !important;
+        padding: 30px !important;
     }
 
     .header-text {
         text-align: center;
-        margin-bottom: 20px;
+        margin-bottom: 32px;
+        padding: 25px 0;
+        background: linear-gradient(135deg, #4A6EE0, #6FA8DC);
+        color: white;
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow);
     }
 
     .header-text h1 {
-        color: var(--primary-color);
+        color: white;
         margin-bottom: 0.5em;
+        font-size: 2.5em;
+        font-weight: 700;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
     }
 
     .header-text h3 {
-        color: var(--secondary-color);
-        font-weight: normal;
+        color: rgba(255, 255, 255, 0.9);
+        font-weight: 400;
+        font-size: 1.2em;
+        max-width: 800px;
+        margin: 0 auto;
     }
 
     .card {
         background-color: var(--card-background);
         border-radius: var(--border-radius);
         box-shadow: var(--shadow);
-        padding: 20px;
-        margin-bottom: 20px;
+        padding: 24px;
+        margin-bottom: 24px;
         border: 1px solid var(--border-color);
         transition: all 0.3s ease;
     }
 
     .card:hover {
-        box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
     }
 
     .tab-active {
-        border-bottom: 2px solid var(--primary-color) !important;
+        border-bottom: 3px solid var(--primary-color) !important;
         color: var(--primary-color) !important;
         font-weight: bold;
     }
 
     button.primary {
-        background-color: var(--primary-color) !important;
+        background: linear-gradient(to right, var(--primary-color), var(--secondary-color)) !important;
         border: none !important;
+        box-shadow: 0 4px 8px rgba(74, 110, 224, 0.3) !important;
+        transition: all 0.3s ease !important;
+    }
+
+    button.primary:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 12px rgba(74, 110, 224, 0.4) !important;
     }
 
     button.secondary {
         background-color: var(--secondary-color) !important;
         border: none !important;
+        transition: all 0.3s ease !important;
+    }
+
+    button.secondary:hover {
+        transform: translateY(-2px) !important;
+    }
+
+    button.stop {
+        background-color: #d32f2f !important;
+        color: white !important;
+        transition: all 0.3s ease !important;
+    }
+
+    button.stop:hover {
+        background-color: #b71c1c !important;
     }
 
     .footer {
         text-align: center;
-        margin-top: 30px;
-        color: #888;
+        margin-top: 40px;
+        padding: 20px;
+        color: #666;
         font-size: 0.9em;
+        border-top: 1px solid var(--border-color);
     }
 
     /* Custom styling for specific components */
     #run-agent-section {
         display: flex;
         flex-direction: column;
-        gap: 15px;
+        gap: 20px;
     }
 
     .action-buttons {
         display: flex;
-        gap: 10px;
-        margin: 15px 0;
+        gap: 15px;
+        margin: 20px 0;
     }
 
     .results-section {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 15px;
+        gap: 20px;
     }
 
     @media (max-width: 768px) {
@@ -1269,31 +1309,56 @@ def create_ui(theme_name="Ocean"):
     label {
         font-weight: 500;
         color: var(--text-color);
+        margin-bottom: 6px;
     }
 
     input, select, textarea {
         border-radius: var(--border-radius) !important;
         border: 1px solid var(--border-color) !important;
+        padding: 10px 14px !important;
+        transition: all 0.2s ease !important;
     }
     
     /* Tooltip improvements */
     .gr-input-label span {
-        opacity: 0.7;
+        opacity: 0.75;
         font-size: 0.9em;
+        font-style: italic;
     }
     
     /* Better focus states */
     input:focus, select:focus, textarea:focus {
         border-color: var(--primary-color) !important;
-        box-shadow: 0 0 0 2px rgba(74, 110, 224, 0.2) !important;
+        box-shadow: 0 0 0 3px rgba(74, 110, 224, 0.15) !important;
+        outline: none !important;
+    }
+    
+    /* Checkbox and radio styling */
+    input[type="checkbox"], input[type="radio"] {
+        accent-color: var(--primary-color);
+    }
+    
+    /* Slider improvements */
+    input[type="range"] {
+        height: 5px;
+        background-color: #e0e0e0;
+        border-radius: 5px;
+    }
+    
+    input[type="range"]::-webkit-slider-thumb {
+        background-color: var(--primary-color);
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        cursor: pointer;
     }
     
     /* Improve visibility of text on video/gif components */
     .caption-text-overlay {
         background-color: rgba(0, 0, 0, 0.7);
         color: white;
-        padding: 5px 10px;
-        border-radius: 3px;
+        padding: 8px 12px;
+        border-radius: 5px;
         text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
     }
     
@@ -1307,13 +1372,328 @@ def create_ui(theme_name="Ocean"):
     /* Improve visibility of labels on dark backgrounds */
     .video-container, .gif-container {
         position: relative;
+        border-radius: var(--border-radius);
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+    }
+    
+    .video-container:hover, .gif-container:hover {
+        transform: scale(1.01);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
     }
     
     .video-container .label, .gif-container .label {
         background-color: rgba(0, 0, 0, 0.6);
         color: white;
-        padding: 5px;
+        padding: 8px;
         border-radius: 4px;
+    }
+    
+    /* Section headers */
+    .section-header {
+        margin: 20px 0 10px 0;
+        padding-bottom: 8px;
+        border-bottom: 2px solid var(--secondary-color);
+        color: var(--primary-color);
+        font-weight: 600;
+    }
+    
+    /* Accordion improvements */
+    .gradio-accordion {
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        overflow: hidden;
+        margin-bottom: 16px;
+    }
+    
+    .gradio-accordion summary {
+        padding: 12px 16px;
+        background-color: #f5f7fd;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+    }
+    
+    .gradio-accordion summary:hover {
+        background-color: #e9edf9;
+    }
+    
+    /* File upload area styling */
+    .file-upload {
+        border: 2px dashed var(--border-color);
+        border-radius: var(--border-radius);
+        padding: 20px;
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+    
+    .file-upload:hover {
+        border-color: var(--primary-color);
+        background-color: rgba(74, 110, 224, 0.05);
+    }
+    
+    /* Waiting browser session container */
+    .waiting-container {
+        width: 100%;
+        height: 50vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px dashed #ddd;
+        border-radius: var(--border-radius);
+        background: linear-gradient(to bottom right, #f9f9fd, #f0f3fa);
+    }
+    
+    .waiting-container h2 {
+        color: #888;
+        font-weight: 400;
+        text-align: center;
+    }
+    
+    /* Agent Run Container styling */
+    .agent-run-container {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        background-color: white;
+        border-radius: var(--border-radius);
+        padding: 20px;
+        box-shadow: var(--shadow);
+    }
+    
+    /* Task Input styling */
+    .task-input textarea, .additional-info textarea {
+        border: 1px solid var(--border-color) !important;
+        border-radius: var(--border-radius) !important;
+        transition: all 0.3s ease;
+        font-size: 1.05em !important;
+    }
+    
+    .task-input textarea:focus, .additional-info textarea:focus {
+        border-color: var(--primary-color) !important;
+        box-shadow: 0 0 0 3px rgba(74, 110, 224, 0.15) !important;
+    }
+    
+    /* Run and Stop button styling */
+    .run-button {
+        font-size: 1.1em !important;
+        padding: 10px 20px !important;
+    }
+    
+    .stop-button {
+        font-size: 1.1em !important;
+    }
+    
+    /* Results tabs styling */
+    .results-tabs {
+        margin-top: 20px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        overflow: hidden;
+    }
+    
+    .results-tab, .details-tab {
+        padding: 15px !important;
+    }
+    
+    /* Result and error box styling */
+    .result-box textarea, .error-box textarea, 
+    .action-box textarea, .thought-box textarea {
+        font-family: monospace !important;
+        line-height: 1.5 !important;
+    }
+    
+    .result-box textarea {
+        background-color: #f0f8ff !important;
+        border-left: 4px solid var(--primary-color) !important;
+    }
+    
+    .error-box textarea {
+        background-color: #fff0f0 !important;
+        border-left: 4px solid #d32f2f !important;
+    }
+    
+    .action-box textarea {
+        background-color: #f0fff0 !important;
+        border-left: 4px solid #4caf50 !important;
+    }
+    
+    .thought-box textarea {
+        background-color: #fff8e1 !important;
+        border-left: 4px solid #ff9800 !important;
+    }
+    
+    /* Recordings row styling */
+    .recordings-row {
+        margin-top: 10px;
+        gap: 20px;
+    }
+    
+    /* File download styling */
+    .file-download {
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        padding: 10px;
+        transition: all 0.3s ease;
+    }
+    
+    .file-download:hover {
+        border-color: var(--primary-color);
+        background-color: rgba(74, 110, 224, 0.05);
+    }
+    
+    /* Browser view styling improvements */
+    .browser-view {
+        margin-top: 15px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        overflow: hidden;
+    }
+    
+    /* Story input styling */
+    .story-input textarea {
+        border: 1px solid var(--border-color) !important;
+        border-radius: var(--border-radius) !important;
+        background-color: #fcfcff !important;
+        transition: all 0.3s ease;
+    }
+    
+    .story-input textarea:focus {
+        border-color: var(--primary-color) !important;
+        box-shadow: 0 0 0 3px rgba(74, 110, 224, 0.15) !important;
+        background-color: white !important;
+    }
+    
+    /* Story Agent Tab styling */
+    .story-agent-tab {
+        padding: 0 !important;
+    }
+    
+    .story-config-column {
+        padding: 20px !important;
+        border-right: 1px solid var(--border-color);
+    }
+    
+    .story-output-column {
+        padding: 20px !important;
+        background-color: rgba(249, 250, 255, 0.5);
+    }
+    
+    /* Model settings accordion */
+    .model-settings-accordion,
+    .output-options-accordion,
+    .local-generation-accordion {
+        margin-bottom: 20px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        overflow: hidden;
+    }
+    
+    /* Provider and model dropdowns */
+    .provider-dropdown,
+    .model-dropdown,
+    .image-model-dropdown {
+        margin-bottom: 10px;
+    }
+    
+    /* Server URL input styling */
+    .server-url-input input {
+        font-family: monospace !important;
+    }
+    
+    /* Steps and guidance sliders */
+    .steps-slider, .guidance-slider {
+        padding: 10px !important;
+        background: rgba(242, 244, 255, 0.5) !important;
+        border-radius: var(--border-radius) !important;
+    }
+    
+    /* Negative prompt input */
+    .negative-prompt-input textarea {
+        font-style: italic !important;
+        background-color: #fff6f6 !important;
+        border-left: 3px solid #ffcccc !important;
+    }
+    
+    /* Variable duration checkbox and input */
+    .variable-duration-checkbox {
+        margin-top: 10px !important;
+    }
+    
+    .variable-durations-input input {
+        font-family: monospace !important;
+    }
+    
+    /* Story run and stop buttons */
+    .story-run-button {
+        background: linear-gradient(to right, #4A6EE0, #7986CB) !important;
+        box-shadow: 0 4px 8px rgba(74, 110, 224, 0.3) !important;
+        padding: 10px 20px !important;
+        margin-top: 16px !important;
+        font-size: 1.1em !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .story-run-button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 12px rgba(74, 110, 224, 0.4) !important;
+    }
+    
+    .story-stop-button {
+        background-color: #d32f2f !important;
+        color: white !important;
+        margin-top: 16px !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .story-stop-button:hover {
+        background-color: #b71c1c !important;
+    }
+    
+    /* Story error output */
+    .story-errors textarea {
+        background-color: #fff0f0 !important;
+        border-left: 4px solid #d32f2f !important;
+        color: #d32f2f !important;
+        font-family: monospace !important;
+    }
+    
+    /* Story script output */
+    .story-script textarea {
+        background-color: #fff !important;
+        border-left: 4px solid #4A6EE0 !important;
+        font-family: 'Georgia', serif !important;
+        line-height: 1.6 !important;
+        padding: 20px !important;
+    }
+    
+    /* Story output tabs */
+    .story-output-tabs {
+        margin-top: 20px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        overflow: hidden;
+    }
+    
+    /* Previous stories accordion */
+    .previous-stories-accordion {
+        margin-top: 20px;
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        overflow: hidden;
+    }
+    
+    /* Story list styling */
+    .story-list {
+        max-height: 400px;
+        overflow-y: auto;
+        padding: 10px;
+    }
+    
+    /* Refresh button */
+    .refresh-button {
+        margin: 10px !important;
     }
     """
 
@@ -1324,7 +1704,7 @@ def create_ui(theme_name="Ocean"):
             gr.Markdown(
                 """
                 # 🌐 Browser Use WebUI
-                ### Control your browser with AI assistance
+                ### Control your browser with AI assistance - Seamlessly automate web tasks with intelligent browser control
                 """,
                 elem_classes=["header-text"],
             )
@@ -1535,14 +1915,15 @@ def create_ui(theme_name="Ocean"):
                         )
 
             with gr.TabItem("🤖 Run Agent", id=4, elem_classes="card"):
-                with gr.Group(elem_id="run-agent-section"):
+                with gr.Group(elem_id="run-agent-section", elem_classes=["agent-run-container"]):
+                    gr.Markdown("### 📋 Task Definition", elem_classes=["section-header"])
                     task = gr.Textbox(
                         label="Task Description",
                         lines=4,
                         placeholder="Enter your task here...",
                         value="go to google.com and type 'OpenAI' click search and give me the first url",
                         info="Describe what you want the agent to do",
-                        interactive=True
+                        elem_classes=["task-input"]
                     )
                     add_infos = gr.Textbox(
                         label="Additional Information",
@@ -1550,94 +1931,126 @@ def create_ui(theme_name="Ocean"):
                         placeholder="Add any helpful context or instructions...",
                         info="Optional hints to help the LLM complete the task",
                         value="",
-                        interactive=True
+                        elem_classes=["additional-info"]
                     )
 
-                    with gr.Row(elem_classes="action-buttons"):
-                        run_button = gr.Button("▶️ Run Agent", variant="primary", scale=2)
-                        stop_button = gr.Button("⏹️ Stop", variant="stop", scale=1)
+                    with gr.Row(elem_classes=["action-buttons"]):
+                        run_button = gr.Button("▶️ Run Agent", variant="primary", scale=2, elem_classes=["run-button"])
+                        stop_button = gr.Button("⏹️ Stop", variant="stop", scale=1, elem_classes=["stop-button"])
 
                     browser_view = gr.HTML(
-                        value="<div style='width:100%; height:50vh; display:flex; align-items:center; justify-content:center; border:1px dashed #ccc; border-radius:8px;'><h2 style='color:#888;'>Waiting for browser session...</h2></div>",
+                        value="<div class='waiting-container'><h2>Waiting for browser session...<br><small>Your automated browser will appear here</small></h2></div>",
                         label="Live Browser View",
-                        visible=False
+                        visible=False,
+                        elem_classes=["browser-view"]
                     )
 
-                    gr.Markdown("### Results", elem_classes="section-header")
-                    with gr.Accordion("Results", open=True, elem_classes="results-section"):
-                        with gr.Row():
-                            with gr.Column():
-                                final_result_output = gr.Textbox(
-                                    label="Final Result", lines=3, show_label=True
-                                )
-                            with gr.Column():
-                                errors_output = gr.Textbox(
-                                    label="Errors", lines=3, show_label=True
-                                )
-                        with gr.Row():
-                            with gr.Column():
-                                model_actions_output = gr.Textbox(
-                                    label="Model Actions", lines=3, show_label=True, visible=False
-                                )
-                            with gr.Column():
-                                model_thoughts_output = gr.Textbox(
-                                    label="Model Thoughts", lines=3, show_label=True, visible=False
-                                )
+                    with gr.Tabs(elem_classes=["results-tabs"]):
+                        with gr.TabItem("Results Summary", elem_classes=["results-tab"]):
+                            gr.Markdown("### 📊 Results", elem_classes=["section-header"])
+                            with gr.Row():
+                                with gr.Column():
+                                    final_result_output = gr.Textbox(
+                                        label="Final Result", 
+                                        lines=5, 
+                                        show_label=True,
+                                        elem_classes=["result-box"]
+                                    )
+                                with gr.Column():
+                                    errors_output = gr.Textbox(
+                                        label="Errors", 
+                                        lines=5, 
+                                        show_label=True,
+                                        elem_classes=["error-box"]
+                                    )
+                        
+                        with gr.TabItem("Execution Details", elem_classes=["details-tab"]):
+                            with gr.Row():
+                                with gr.Column():
+                                    model_actions_output = gr.Textbox(
+                                        label="Model Actions", 
+                                        lines=10, 
+                                        show_label=True,
+                                        elem_classes=["action-box"]
+                                    )
+                                with gr.Column():
+                                    model_thoughts_output = gr.Textbox(
+                                        label="Model Thoughts", 
+                                        lines=10, 
+                                        show_label=True,
+                                        elem_classes=["thought-box"]
+                                    )
                     
-                    with gr.Row():
+                    gr.Markdown("### 📹 Recordings & Files", elem_classes=["section-header"])
+                    with gr.Row(elem_classes=["recordings-row"]):
                         with gr.Column():
-                            recording_gif = gr.Image(label="Result GIF", format="gif", elem_classes=["gif-container"])
+                            recording_gif = gr.Image(
+                                label="Result GIF", 
+                                format="gif", 
+                                elem_classes=["gif-container"]
+                            )
                         with gr.Column():
                             with gr.Row():
-                                trace_file = gr.File(label="Trace File")
-                                agent_history_file = gr.File(label="Agent History")
+                                trace_file = gr.File(
+                                    label="Trace File",
+                                    elem_classes=["file-download"]
+                                )
+                                agent_history_file = gr.File(
+                                    label="Agent History",
+                                    elem_classes=["file-download"]
+                                )
 
-            with gr.Tab("💭 Story Agent"):
+            with gr.Tab("💭 Story Agent", elem_classes=["story-agent-tab"]):
                 with gr.Row():
-                    with gr.Column():
+                    with gr.Column(scale=2, elem_classes=["story-config-column"]):
+                        gr.Markdown("### 📝 Story Configuration", elem_classes=["section-header"])
                         story_task = gr.Textbox(
-                            label="📝 Story Topic", 
+                            label="Story Topic", 
                             value="A space adventure with a brave astronaut and her robot companion exploring a new planet", 
                             lines=3,
-                            placeholder="Describe the story you want to generate..."
-                        )
-                        story_llm_provider = gr.Dropdown(
-                            choices=[provider for provider, model in utils.model_names.items()],
-                            label="LLM Provider",
-                            value="ollama",
-                            interactive=True,
-                            info="LLM provider for story generation"
-                        )
-                        story_llm_model_name = gr.Dropdown(
-                            label="LLM Model",
-                            value="deepseek-r1:14b",
-                            interactive=True,
-                            allow_custom_value=True,  # Allow users to input custom model names
-                            choices=utils.model_names.get("ollama", []),
-                            info="Choose the LLM model for story generation"
-                        )
-                        story_image_model = gr.Dropdown(
-                            ["dall-e-3", "dall-e-2"],
-                            label="Image Generation Model", 
-                            value="dall-e-3",
-                            info="Select the image generation model to use"
+                            placeholder="Describe the story you want to generate...",
+                            elem_classes=["story-input"]
                         )
                         
-                        # Add local Stable Diffusion option
-                        with gr.Row():
-                            story_use_local_generation = gr.Checkbox(
-                                label="Use Local Stable Diffusion Server", 
-                                value=False,
-                                info="Use a local Stable Diffusion server instead of OpenAI"
-                            )
+                        with gr.Accordion("Model Settings", open=True, elem_classes=["model-settings-accordion"]):
+                            with gr.Row():
+                                story_llm_provider = gr.Dropdown(
+                                    label="Language Model Provider",
+                                    choices=["openai", "anthropic", "google", "azure", "ollama", "anyscale", "custom"],
+                                    value="ollama",
+                                    elem_classes=["provider-dropdown"]
+                                )
+                                
+                                story_llm_model_name = gr.Dropdown(
+                                    label="Language Model",
+                                    choices=llm_models.get("ollama", []),
+                                    value="deepseek-r1:14b",
+                                    elem_classes=["model-dropdown"]
+                                )
+                                
+                            with gr.Row():
+                                story_image_model = gr.Dropdown(
+                                    label="Image Generation Model",
+                                    choices=["dall-e-3", "dall-e-2"],
+                                    value="dall-e-3",
+                                    elem_classes=["image-model-dropdown"]
+                                )
+                                
+                                story_use_local_generation = gr.Checkbox(
+                                    label="Use Local Image Generation",
+                                    value=False,
+                                    elem_classes=["local-generation-checkbox"]
+                                )
                         
-                        # Add local generation settings
-                        with gr.Accordion("Local Stable Diffusion Settings", open=False, visible=False) as local_sd_accordion:
+                        # Add local generation settings (hidden by default)
+                        with gr.Accordion("Local Image Generation Settings", open=False, visible=False, elem_classes=["local-generation-accordion"]) as local_sd_accordion:
                             story_local_generation_url = gr.Textbox(
                                 label="Server URL",
                                 value="http://localhost:8000",
-                                info="URL of your local Stable Diffusion server"
+                                info="URL of your local Stable Diffusion server",
+                                elem_classes=["server-url-input"]
                             )
+                            
                             with gr.Row():
                                 story_local_generation_steps = gr.Slider(
                                     minimum=1,
@@ -1645,20 +2058,25 @@ def create_ui(theme_name="Ocean"):
                                     value=20,
                                     step=1,
                                     label="Inference Steps",
-                                    info="Higher values = better quality but slower generation"
+                                    info="Higher values = better quality but slower generation",
+                                    elem_classes=["steps-slider"]
                                 )
+                                
                                 story_local_generation_guidance = gr.Slider(
                                     minimum=1.0,
                                     maximum=20.0,
                                     value=7.5,
                                     step=0.5,
                                     label="Guidance Scale",
-                                    info="How closely to follow prompt (higher = more faithful)"
+                                    info="How closely to follow prompt (higher = more faithful)",
+                                    elem_classes=["guidance-slider"]
                                 )
+                                
                             story_local_generation_negative = gr.Textbox(
                                 label="Negative Prompt",
                                 value="low quality, bad anatomy, worst quality, low resolution",
-                                info="Things to avoid in generated images"
+                                info="Things to avoid in generated images",
+                                elem_classes=["negative-prompt-input"]
                             )
                         
                         # Show/hide local SD settings based on checkbox
@@ -1668,62 +2086,53 @@ def create_ui(theme_name="Ocean"):
                             outputs=[local_sd_accordion]
                         )
                         
-                        story_save_path = gr.Textbox(
-                            label="Save Path",
-                            value="story_output",
-                            placeholder="Directory to save story files",
-                            info="Base directory for stories - each story gets its own timestamped folder"
-                        )
-                        
-                        with gr.Row():
-                            story_use_seed = gr.Checkbox(
-                                label="Use Consistent Seed", 
-                                value=True,
-                                info="Uses the same seed for all images to improve style consistency"
-                            )
-                    
-                        # Add frame duration controls
-                        with gr.Accordion("Advanced Animation Settings", open=False):
+                        with gr.Accordion("Output Options", open=True, elem_classes=["output-options-accordion"]):
                             with gr.Row():
-                                story_gif_duration = gr.Slider(
-                                    minimum=5.0,
-                                    maximum=100.0,
-                                    value=10.0,
-                                    step=5,
-                                    label="GIF Frame Duration (seconds)",
-                                    info="Duration each frame is shown in the GIF"
+                                story_save_path = gr.Textbox(
+                                    label="Save Path",
+                                    placeholder="e.g. ./story_output",
+                                    value="./story_output",
+                                    elem_classes=["save-path-input"]
                                 )
                                 
-                                story_video_duration = gr.Slider(
-                                    minimum=5.0,
-                                    maximum=100.0,
-                                    value=10.0,
-                                    step=5,
-                                    label="Video Frame Duration (seconds)",
-                                    info="Duration each frame is shown in the video"
+                                story_use_seed = gr.Checkbox(
+                                    label="Use Image Seed",
+                                    value=True,
+                                    elem_classes=["seed-checkbox"]
                                 )
                             
                             with gr.Row():
-                                story_video_framerate = gr.Slider(
-                                    minimum=1,
-                                    maximum=30,
-                                    value=2,
-                                    step=1,
-                                    label="Video Framerate (FPS)",
-                                    info="Frames per second for video output"
+                                story_gif_duration = gr.Number(
+                                    label="GIF Frame Duration (s)",
+                                    value=0.05,
+                                    elem_classes=["duration-input"]
                                 )
-                            
+                                
+                                story_video_duration = gr.Number(
+                                    label="Video Frame Duration (s)",
+                                    value=5.0,
+                                    elem_classes=["duration-input"]
+                                )
+                                
+                                story_video_framerate = gr.Number(
+                                    label="Video Framerate",
+                                    value=2,
+                                    elem_classes=["framerate-input"]
+                                )
+                                
                             story_use_variable = gr.Checkbox(
                                 label="Use Variable Durations",
                                 value=False,
-                                info="Enable to specify different durations for each frame"
+                                info="Enable to specify different durations for each frame",
+                                elem_classes=["variable-duration-checkbox"]
                             )
                             
                             story_variable_durations = gr.Textbox(
                                 label="Variable Durations (comma-separated seconds)",
                                 value="3.0, 2.0, 4.0, 3.0, 3.0, 3.0, 3.0, 3.0",
                                 info="Specify the duration for each frame in seconds, comma-separated",
-                                visible=False
+                                visible=False,
+                                elem_classes=["variable-durations-input"]
                             )
                             
                             # Show/hide variable durations input based on checkbox
@@ -1732,48 +2141,57 @@ def create_ui(theme_name="Ocean"):
                                 inputs=[story_use_variable],
                                 outputs=[story_variable_durations]
                             )
-    
-                story_run_button = gr.Button("▶️ Generate Story", variant="primary")
-                story_stop_button = gr.Button("⏹ Stop", variant="stop")
-                
-                with gr.Column():
-                    story_errors_output = gr.Textbox(
-                        label="Errors",
-                        value="",
-                        visible=False,
-                        lines=10
-                    )
-                    story_script_output = gr.Textbox(
-                        label="📚 Story Script",
-                        lines=10
-                    )
+                        
+                        story_run_button = gr.Button("▶️ Generate Story", variant="primary", elem_classes=["story-run-button"])
+                        story_stop_button = gr.Button("⏹ Stop", variant="stop", elem_classes=["story-stop-button"])
                     
-                    with gr.Tabs():
-                        with gr.TabItem("GIF"):
-                            story_image_output = gr.Image(
-                                label="🎬 Story Animation",
-                                type="filepath",
-                                height=600,
-                                elem_classes=["gif-container"]
-                            )
-                        with gr.TabItem("Video"):
-                            story_video_output = gr.Video(
-                                label="🎬 Story Video",
-                                height=600,
-                                elem_classes=["video-container"]
-                            )
-                    
-                    story_files_output = gr.File(
-                        label="📦 Download Story Files",
-                        file_count="multiple"
-                    )
+                    with gr.Column(scale=3, elem_classes=["story-output-column"]):
+                        story_errors_output = gr.Textbox(
+                            label="Errors",
+                            value="",
+                            visible=False,
+                            lines=6,
+                            elem_classes=["story-errors"]
+                        )
+                        
+                        with gr.Tabs(elem_classes=["story-output-tabs"]):
+                            with gr.TabItem("Story Script", elem_classes=["script-tab"]):
+                                story_script_output = gr.Textbox(
+                                    label="📚 Story Script",
+                                    lines=15,
+                                    elem_classes=["story-script"]
+                                )
+                            
+                            with gr.TabItem("Animation", elem_classes=["animation-tab"]):
+                                with gr.Tabs():
+                                    with gr.TabItem("GIF"):
+                                        story_image_output = gr.Image(
+                                            label="🎬 Story Animation",
+                                            type="filepath",
+                                            height=600,
+                                            elem_classes=["gif-container"]
+                                        )
+                                    with gr.TabItem("Video"):
+                                        story_video_output = gr.Video(
+                                            label="🎬 Story Video",
+                                            height=600,
+                                            elem_classes=["video-container"]
+                                        )
+                            
+                            with gr.TabItem("Download", elem_classes=["download-tab"]):
+                                story_files_output = gr.File(
+                                    label="📦 Download Story Files",
+                                    file_count="multiple",
+                                    elem_classes=["story-files"]
+                                )
                 
                 # Section for previously generated stories
-                with gr.Accordion("📚 Previous Stories", open=False):
-                    story_refresh_button = gr.Button("🔄 Refresh", variant="secondary", scale=1)
+                with gr.Accordion("📚 Previous Stories", open=False, elem_classes=["previous-stories-accordion"]):
+                    with gr.Row():
+                        story_refresh_button = gr.Button("🔄 Refresh", variant="secondary", scale=1, elem_classes=["refresh-button"])
                     
-                    story_list = gr.Markdown("Click Refresh to see previously generated stories")
-                
+                    story_list = gr.Markdown("Click Refresh to see previously generated stories", elem_classes=["story-list"])
+
                 # Define the list_story_folders function here
                 def list_story_folders(base_path):
                     """List the timestamped story folders with their creation dates"""
@@ -1829,21 +2247,21 @@ def create_ui(theme_name="Ocean"):
                         import traceback
                         logger.error(f"Error in list_story_folders: {e}\n{traceback.format_exc()}")
                         return "Error listing story folders. Check logs for details."
-
-                story_refresh_button.click(
-                    fn=list_story_folders,
-                    inputs=[story_save_path],
-                    outputs=[story_list]
-                )
                 
                 # Event handlers for the story agent
                 def update_story_model_choices(provider):
-                    return gr.update(choices=utils.model_names.get(provider, []))
+                    return gr.update(choices=llm_models.get(provider, []))
                 
                 story_llm_provider.change(
                     fn=update_story_model_choices,
                     inputs=[story_llm_provider],
                     outputs=[story_llm_model_name]
+                )
+                
+                story_refresh_button.click(
+                    fn=list_story_folders,
+                    inputs=[story_save_path],
+                    outputs=[story_list]
                 )
 
             with gr.TabItem("🧐 Deep Research", id=5, elem_classes="card"):
@@ -2079,11 +2497,15 @@ def create_ui(theme_name="Ocean"):
                     outputs=[config_status]
                 )
                 
-        # Add a footer
-        gr.HTML(
-            """<div class="footer">Browser Use WebUI - AI-powered browser automation - <a href="https://github.com/xianjianlf2/browser-use" target="_blank">View on GitHub</a></div>""",
-            elem_classes=["footer"]
-        )
+        # Add a footer with additional information
+        with gr.Row(elem_classes=["footer"]):
+            gr.Markdown(
+                """
+                **Browser Use WebUI** - AI-powered web automation tool
+                
+                Made with ❤️ by the Browser Use team
+                """
+            )
 
         # Attach the callback to the LLM provider dropdown
         llm_provider.change(
