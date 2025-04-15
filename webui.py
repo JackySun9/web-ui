@@ -1610,7 +1610,7 @@ def create_ui(theme_name="Ocean"):
                         )
                         story_llm_model_name = gr.Dropdown(
                             label="LLM Model",
-                            value="gpt-4o",
+                            value="gpt-4.1-mini",
                             interactive=True,
                             allow_custom_value=True,  # Allow users to input custom model names
                             choices=utils.model_names.get("openai", []),

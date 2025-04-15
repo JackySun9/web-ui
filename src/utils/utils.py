@@ -78,7 +78,7 @@ def get_llm_model(provider: str, **kwargs):
             base_url = kwargs.get("base_url")
 
         return ChatOpenAI(
-            model=kwargs.get("model_name", "gpt-4o"),
+            model=kwargs.get("model_name", "gpt-4.1-mini"),
             temperature=kwargs.get("temperature", 0.0),
             base_url=base_url,
             api_key=api_key,
@@ -137,7 +137,7 @@ def get_llm_model(provider: str, **kwargs):
             base_url = kwargs.get("base_url")
         api_version = kwargs.get("api_version", "") or os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
         return AzureChatOpenAI(
-            model=kwargs.get("model_name", "gpt-4o"),
+            model=kwargs.get("model_name", "gpt-4.1-mini"),
             temperature=kwargs.get("temperature", 0.0),
             api_version=api_version,
             azure_endpoint=base_url,
@@ -164,7 +164,7 @@ def get_llm_model(provider: str, **kwargs):
         )
     elif provider == "unbound":
         return ChatOpenAI(
-            model=kwargs.get("model_name", "gpt-4o-mini"),
+            model=kwargs.get("model_name", "gpt-4.1-mini"),
             temperature=kwargs.get("temperature", 0.0),
             base_url = os.getenv("UNBOUND_ENDPOINT", "https://api.getunbound.ai"),
             api_key=api_key,
@@ -176,7 +176,7 @@ def get_llm_model(provider: str, **kwargs):
 # Predefined model names for common providers
 model_names = {
     "anthropic": ["claude-3-5-sonnet-20241022", "claude-3-5-sonnet-20240620", "claude-3-opus-20240229"],
-    "openai": ["gpt-4o", "gpt-4", "gpt-3.5-turbo", "o3-mini"],
+    "openai": ["gpt-4.1-mini", "gpt-4.1", "gpt-4o", "o3-mini"],
     "deepseek": ["deepseek-chat", "deepseek-reasoner"],
     "google": ["gemini-2.0-flash", "gemini-2.0-flash-thinking-exp", "gemini-1.5-flash-latest",
                "gemini-1.5-flash-8b-latest", "gemini-2.0-flash-thinking-exp-01-21", "gemini-2.0-pro-exp-02-05"],
