@@ -1604,16 +1604,16 @@ def create_ui(theme_name="Ocean"):
                         story_llm_provider = gr.Dropdown(
                             choices=[provider for provider, model in utils.model_names.items()],
                             label="LLM Provider",
-                            value="openai",
+                            value="ollama",
                             interactive=True,
                             info="LLM provider for story generation"
                         )
                         story_llm_model_name = gr.Dropdown(
                             label="LLM Model",
-                            value="gpt-4.1-mini",
+                            value="deepseek-r1:14b",
                             interactive=True,
                             allow_custom_value=True,  # Allow users to input custom model names
-                            choices=utils.model_names.get("openai", []),
+                            choices=utils.model_names.get("ollama", []),
                             info="Choose the LLM model for story generation"
                         )
                         story_image_model = gr.Dropdown(
