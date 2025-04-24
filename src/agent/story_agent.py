@@ -157,7 +157,7 @@ class StoryAgent(CustomAgent):
             injected_agent_state: Optional[Union[AgentState, CustomAgentState]] = None,
             context: Context | None = None,
             # Story agent specific
-            image_generation_model: str = "dall-e-3",
+            image_generation_model: str = "gpt-image-1",
             image_generation_api_key: Optional[str] = None,
             save_story_path: Optional[str] = None,
             # Additional consistency options
@@ -587,16 +587,31 @@ class StoryAgent(CustomAgent):
                     size="1024x1024"
                 )
                 
-                # Get the image URL (ensure it's a string)
-                image_url = response.data[0].url
-                if image_url is None:
-                    raise ValueError("Image URL is None")
+                # Handle response based on model type
+                if self.image_generation_model == "gpt-image-1":
+                    # gpt-image-1 always returns base64-encoded images
+                    b64_data = response.data[0].b64_json
+                    if not b64_data:
+                        logger.error("Image generation failed: No base64 data returned")
+                        raise ValueError("No base64 image data returned from gpt-image-1")
                     
-                # Download the image
-                import requests
-                image_response = requests.get(str(image_url))
-                from PIL import Image
-                image = Image.open(io.BytesIO(image_response.content))
+                    # Decode base64 image
+                    import base64
+                    image_data = base64.b64decode(b64_data)
+                    from PIL import Image
+                    image = Image.open(io.BytesIO(image_data))
+                else:
+                    # Other models like dall-e-3 return URLs by default
+                    image_url = response.data[0].url
+                    if image_url is None:
+                        logger.error(f"Image generation failed: response data did not contain URL")
+                        raise ValueError("Image URL is None - OpenAI API did not return an image URL")
+                    
+                    # Download the image
+                    import requests
+                    image_response = requests.get(str(image_url))
+                    from PIL import Image
+                    image = Image.open(io.BytesIO(image_response.content))
             
             # Add scene description to the image
             from PIL import Image, ImageDraw, ImageFont

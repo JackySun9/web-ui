@@ -2031,8 +2031,8 @@ def create_ui(theme_name="Ocean"):
                             with gr.Row():
                                 story_image_model = gr.Dropdown(
                                     label="Image Generation Model",
-                                    choices=["dall-e-3", "dall-e-2"],
-                                    value="dall-e-3",
+                                    choices=["gpt-image-1", "dall-e-3", "dall-e-2"],
+                                    value="gpt-image-1",
                                     elem_classes=["image-model-dropdown"]
                                 )
                                 
