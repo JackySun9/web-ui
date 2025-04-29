@@ -25,7 +25,8 @@ PROVIDER_DISPLAY_NAMES = {
     "google": "Google",
     "alibaba": "Alibaba",
     "moonshot": "MoonShot",
-    "unbound": "Unbound AI"
+    "unbound": "Unbound AI",
+    "openrouter": "OpenRouter"
 }
 
 
@@ -169,6 +170,18 @@ def get_llm_model(provider: str, **kwargs):
             base_url = os.getenv("UNBOUND_ENDPOINT", "https://api.getunbound.ai"),
             api_key=api_key,
         )
+    elif provider == "openrouter":
+        if not kwargs.get("base_url", ""):
+            base_url = os.getenv("OPENROUTER_ENDPOINT", "https://openrouter.ai/api/v1")
+        else:
+            base_url = kwargs.get("base_url")
+
+        return ChatOpenAI(
+            model=kwargs.get("model_name", "mistralai/mistral-7b-instruct"),
+            temperature=kwargs.get("temperature", 0.0),
+            base_url=base_url,
+            api_key=api_key,
+        )
     else:
         raise ValueError(f"Unsupported provider: {provider}")
 
@@ -186,7 +199,9 @@ model_names = {
     "mistral": ["pixtral-large-latest", "mistral-large-latest", "mistral-small-latest", "ministral-8b-latest"],
     "alibaba": ["qwen-plus", "qwen-max", "qwen-turbo", "qwen-long"],
     "moonshot": ["moonshot-v1-32k-vision-preview", "moonshot-v1-8k-vision-preview"],
-    "unbound": ["gemini-2.0-flash","gpt-4o-mini", "gpt-4o", "gpt-4.5-preview"]
+    "unbound": ["gemini-2.0-flash","gpt-4o-mini", "gpt-4o", "gpt-4.5-preview"],
+    "openrouter": ["qwen/qwen3-30b-a3b:free", "tngtech/deepseek-r1t-chimera:free", "microsoft/mai-ds-r1:free", 
+                "deepseek/deepseek-chat-v3-0324:free", "deepseek/deepseek-r1:free", "google/gemini-2.0-flash-exp:free"]
 }
 
 

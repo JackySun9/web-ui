@@ -2016,15 +2016,15 @@ def create_ui(theme_name="Ocean"):
                             with gr.Row():
                                 story_llm_provider = gr.Dropdown(
                                     label="Language Model Provider",
-                                    choices=["openai", "anthropic", "google", "azure", "ollama", "anyscale", "custom"],
-                                    value="ollama",
+                                    choices=["openai", "anthropic", "google", "azure", "ollama", "anyscale", "openrouter", "custom"],
+                                    value="openrouter",
                                     elem_classes=["provider-dropdown"]
                                 )
                                 
                                 story_llm_model_name = gr.Dropdown(
                                     label="Language Model",
-                                    choices=llm_models.get("ollama", []),
-                                    value="deepseek-r1:14b",
+                                    choices=llm_models.get("openrouter", []),
+                                    value="qwen/qwen3-30b-a3b:free",
                                     elem_classes=["model-dropdown"]
                                 )
                                 
@@ -2032,7 +2032,7 @@ def create_ui(theme_name="Ocean"):
                                 story_image_model = gr.Dropdown(
                                     label="Image Generation Model",
                                     choices=["gpt-image-1", "dall-e-3", "dall-e-2"],
-                                    value="gpt-image-1",
+                                    value="dall-e-3",
                                     elem_classes=["image-model-dropdown"]
                                 )
                                 
