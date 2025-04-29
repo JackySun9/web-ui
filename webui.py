@@ -1843,7 +1843,7 @@ def create_ui(theme_name="Ocean"):
                                 visible=False
                             )
 
-            with gr.TabItem("🔧 LLM Settings", id=2, elem_classes="card"):
+            with gr.TabItem("🔧 LLM Settings", id=2):
                 with gr.Group():
                     with gr.Row():
                         with gr.Column():
