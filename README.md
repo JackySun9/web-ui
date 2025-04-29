@@ -262,3 +262,13 @@ The story generation process has three main steps:
 - The agent will generate a multi-scene story script
 - Each scene will be visualized as an image
 - The final result is an animated story GIF
+
+
+The DeepSite generator provides a dedicated interface for creating websites through a descriptive prompt, making it easy for users to generate complete websites without needing to know how to code.
+To use the DeepSite generator:
+Navigate to the "DeepSite Generator" tab
+Enter a detailed description of the website you want
+Click "Generate Website"
+View the generated website in the preview area
+Use "View Code" to see the HTML source
+Download the HTML file to save it locally
