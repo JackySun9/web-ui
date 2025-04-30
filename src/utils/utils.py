@@ -193,7 +193,7 @@ model_names = {
     "deepseek": ["deepseek-chat", "deepseek-reasoner"],
     "google": ["gemini-2.0-flash", "gemini-2.0-flash-thinking-exp", "gemini-1.5-flash-latest",
                "gemini-1.5-flash-8b-latest", "gemini-2.0-flash-thinking-exp-01-21", "gemini-2.0-pro-exp-02-05"],
-    "ollama": ["qwq:32b", "gemma3:27b", "deepseek-r1:14b"],
+    "ollama": ["qwen3:32b","qwq:32b", "gemma3:27b", "deepseek-r1:14b"],
     "openrouter": ["qwen/qwen3-30b-a3b:free", "tngtech/deepseek-r1t-chimera:free", "microsoft/mai-ds-r1:free", 
                 "deepseek/deepseek-chat-v3-0324:free", "deepseek/deepseek-r1:free", "google/gemini-2.0-flash-exp:free"],
     "azure_openai": ["gpt-4o", "gpt-4", "gpt-3.5-turbo"],

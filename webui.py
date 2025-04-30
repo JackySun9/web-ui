@@ -606,6 +606,89 @@ async def run_deepsite_agent(
         print(f"Error in run_deepsite_agent: {error_details}")
         return '', error_details, '', '', None, None
 
+
+async def run_deepsite_iteration_agent(
+        llm,
+        task,
+        existing_html,
+        max_steps=10,
+        use_vision=True,
+        max_actions_per_step=10,
+        tool_calling_method="auto",
+        max_input_tokens=128000
+):
+    try:
+        print(f"Starting run_deepsite_iteration_agent with task: {task}")
+        from datetime import datetime
+        global _global_agent
+        
+        # Define the system prompt for website improvement
+        system_prompt = {
+            "role": "system",
+            "content": "ONLY USE HTML, CSS AND JAVASCRIPT. You are an expert web developer tasked with improving existing websites. Analyze the provided HTML and make improvements based on the user's requirements. Use as much as you can TailwindCSS for the CSS, if you can't do something with TailwindCSS, then use custom CSS. Ensure you keep the core functionality intact while improving design, user experience, and functionality. ALWAYS GIVE THE RESPONSE INTO A SINGLE HTML FILE"
+        }
+        
+        # Create a simple agent that incorporates the existing HTML
+        from langchain_core.messages import SystemMessage, HumanMessage
+        
+        print("Creating messages structure for iteration")
+        # Create messages structure with the existing HTML
+        iteration_task = f"""
+{task}
+
+Here is the existing website HTML to improve:
+
+```html
+{existing_html}
+```
+
+Analyze this code and provide an improved version based on my requirements. Keep the core functionality while making the requested improvements.
+"""
+        
+        messages = [
+            SystemMessage(content=system_prompt["content"]),
+            HumanMessage(content=iteration_task)
+        ]
+        
+        print("Invoking LLM model for iteration")
+        # Invoke the LLM directly to generate the improved website content
+        try:
+            response = llm.invoke(messages)
+            print("LLM response received successfully for iteration")
+        except Exception as llm_error:
+            print(f"Error invoking LLM for iteration: {str(llm_error)}")
+            raise llm_error
+        
+        # Extract the HTML content from the response
+        html_content = response.content
+        
+        # Clean up the code if it's wrapped in markdown code blocks
+        if "```html" in html_content:
+            html_content = html_content.split("```html")[1].split("```")[0].strip()
+        elif "```" in html_content:
+            html_content = html_content.split("```")[1].split("```")[0].strip()
+            
+        # Save the HTML to a file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_dir = os.path.join("tmp", "deepsite")
+        os.makedirs(save_dir, exist_ok=True)
+        
+        file_path = os.path.join(save_dir, f"website_iteration_{timestamp}.html")
+        print(f"Saving improved HTML content to file: {file_path}")
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+            
+        print("Successfully completed run_deepsite_iteration_agent")
+        # Return the same structure as other agent functions
+        return html_content, "", "", "", None, file_path
+        
+    except Exception as e:
+        import traceback
+        error_details = str(e) + "\n" + traceback.format_exc()
+        print(f"Error in run_deepsite_iteration_agent: {error_details}")
+        return '', error_details, '', '', None, None
+
+
 async def run_story_agent(
         llm,
         task,
@@ -2392,6 +2475,12 @@ def create_ui(theme_name="Ocean"):
                         info="Be as detailed as possible about the website's purpose, content, style, and functionality"
                     )
                     
+                    deepsite_iterate_check = gr.Checkbox(
+                        label="Iterate Website",
+                        value=False,
+                        info="Check this to iteratively improve the currently displayed website instead of creating a new one"
+                    )
+                    
                     with gr.Row():
                         deepsite_generate_btn = gr.Button("Generate Website", variant="primary")
                         deepsite_clear_btn = gr.Button("Clear", variant="secondary")
@@ -2410,10 +2499,10 @@ def create_ui(theme_name="Ocean"):
                     deepsite_download_btn = gr.Button("Download HTML File")
                     deepsite_file_path = gr.Textbox(visible=False)
                     
-                    # Define DeepSite functions - now using global LLM settings
-                    async def generate_website(description, provider, model_name, ctx, temperature, base_url, api_key):
+                    # Define DeepSite functions - now supporting iteration
+                    async def generate_website(description, iterate_website, current_html, provider, model_name, ctx, temperature, base_url, api_key):
                         try:
-                            print(f"Generating website with provider: {provider}, model: {model_name}")
+                            print(f"Generating website with provider: {provider}, model: {model_name}, iteration mode: {iterate_website}")
                             
                             # Get the LLM model using the global LLM settings
                             current_llm = utils.get_llm_model(
@@ -2427,25 +2516,55 @@ def create_ui(theme_name="Ocean"):
                             
                             print("LLM model created successfully")
                             
-                            # Run the deepsite agent
-                            html_content, errors, _, _, _, file_path = await run_deepsite_agent(
-                                llm=current_llm,
-                                task=description,
-                                max_steps=10,
-                                use_vision=True
-                            )
+                            # Check if we're in iteration mode and have existing HTML
+                            if iterate_website and current_html:
+                                print("Using iteration mode with existing HTML")
+                                # Run the deepsite iteration agent with the current HTML
+                                html_content, errors, _, _, _, file_path = await run_deepsite_iteration_agent(
+                                    llm=current_llm,
+                                    task=description,
+                                    existing_html=current_html,
+                                    max_steps=10,
+                                    use_vision=True
+                                )
+                            else:
+                                # Run the regular deepsite agent for new website generation
+                                html_content, errors, _, _, _, file_path = await run_deepsite_agent(
+                                    llm=current_llm,
+                                    task=description,
+                                    max_steps=10,
+                                    use_vision=True
+                                )
                             
                             if errors:
                                 print(f"DeepSite agent returned errors: {errors}")
                                 return gr.update(value=f"<p>Error generating website: {errors}</p>"), "", gr.update(visible=False), ""
                             
-                            print(f"DeepSite generated HTML successfully, saved to {file_path}")
+                            action_type = "improved" if iterate_website else "generated"
+                            print(f"DeepSite {action_type} HTML successfully, saved to {file_path}")
                             return gr.update(value=html_content), html_content, gr.update(visible=True), file_path
                         except Exception as e:
                             import traceback
                             error_details = str(e) + "\n" + traceback.format_exc()
                             print(f"Error in generate_website: {error_details}")
                             return gr.update(value=f"<p>Error generating website: {str(e)}</p>"), "", gr.update(visible=False), ""
+                    
+                    # Update the deepsite_generate_btn.click to include the new parameters
+                    deepsite_generate_btn.click(
+                        fn=generate_website,
+                        inputs=[
+                            deepsite_input,
+                            deepsite_iterate_check,
+                            deepsite_code,
+                            llm_provider,
+                            llm_model_name,
+                            ollama_num_ctx,
+                            llm_temperature,
+                            llm_base_url,
+                            llm_api_key
+                        ],
+                        outputs=[deepsite_output, deepsite_code, deepsite_code, deepsite_file_path]
+                    )
                     
                     def clear_deepsite():
                         return "", "", gr.update(visible=False), ""
@@ -2459,20 +2578,6 @@ def create_ui(theme_name="Ocean"):
                         return gr.update(value="")
                     
                     # Connect DeepSite UI components - now using global LLM settings
-                    deepsite_generate_btn.click(
-                        fn=generate_website,
-                        inputs=[
-                            deepsite_input,
-                            llm_provider,
-                            llm_model_name,
-                            ollama_num_ctx,
-                            llm_temperature,
-                            llm_base_url,
-                            llm_api_key
-                        ],
-                        outputs=[deepsite_output, deepsite_code, deepsite_code, deepsite_file_path]
-                    )
-                    
                     deepsite_clear_btn.click(
                         clear_deepsite,
                         inputs=[],

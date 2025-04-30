@@ -272,3 +272,10 @@ Click "Generate Website"
 View the generated website in the preview area
 Use "View Code" to see the HTML source
 Download the HTML file to save it locally
+
+To use iterative website functionality:
+First, generate a website normally by describing what you want
+Then, when you want to make improvements:
+Check the "Iterate Website" checkbox
+Enter your improvement requests in the description field (e.g., "Make the website more mobile-friendly" or "Add a contact form")
+Click "Generate Website" to create an improved version
